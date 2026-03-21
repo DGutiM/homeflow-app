@@ -1,0 +1,1987 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HomeFlow</title>
+  <meta name="description" content="HomeFlow: control mensual de ingresos, gastos, inversiones, ahorro neto y tasa de ahorro." />
+  <meta property="og:title" content="HomeFlow" />
+  <meta property="og:description" content="Controla ingresos, gastos, inversiones y ahorro mensual de forma visual." />
+  <meta property="og:image" content="preview.png" />
+  <meta property="og:type" content="website" />
+  <meta name="theme-color" content="#0f766e" />
+  <link rel="icon" href="icon.png" type="image/png" />
+  <link rel="apple-touch-icon" href="icon.png" />
+  <link rel="manifest" href="manifest.json" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --bg: #f3f7fb;
+      --card: #ffffff;
+      --text: #15325b;
+      --muted: #65758b;
+      --line: #d9e2ec;
+      --brand: #0f766e;
+      --brand-2: #2563eb;
+      --good: #16a34a;
+      --warn: #d97706;
+      --bad: #dc2626;
+      --shadow: 0 16px 40px rgba(21, 50, 91, 0.08);
+      --radius: 22px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: linear-gradient(180deg, #eef5fb 0%, #f9fbfe 100%);
+      color: var(--text);
+    }
+
+    .app-shell {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 110px 1fr auto;
+      gap: 20px;
+      align-items: center;
+      background: rgba(255,255,255,0.9);
+      border: 1px solid rgba(217, 226, 236, 0.8);
+      backdrop-filter: blur(10px);
+      border-radius: 28px;
+      box-shadow: var(--shadow);
+      padding: 18px 22px;
+      margin-bottom: 22px;
+    }
+
+    .hero img {
+      width: 100%;
+      border-radius: 24px;
+      box-shadow: 0 10px 24px rgba(15, 118, 110, 0.15);
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-size: clamp(1.8rem, 4vw, 3rem);
+      line-height: 1;
+      letter-spacing: -0.03em;
+    }
+
+    .hero p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 1rem;
+    }
+
+    .pill-group {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .pill {
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: #eef7f6;
+      color: var(--brand);
+      font-weight: 700;
+      font-size: 0.9rem;
+      border: 1px solid #d6ebe9;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 22px;
+    }
+
+    .tab-button {
+      border: none;
+      border-radius: 999px;
+      padding: 12px 18px;
+      font-weight: 700;
+      cursor: pointer;
+      background: white;
+      color: var(--text);
+      border: 1px solid var(--line);
+      box-shadow: 0 6px 16px rgba(21, 50, 91, 0.05);
+    }
+
+    .tab-button.active {
+      background: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%);
+      color: white;
+      border-color: transparent;
+    }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .grid {
+      display: grid;
+      gap: 18px;
+    }
+
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 20px;
+    }
+
+    .card h2, .card h3 {
+      margin: 0 0 12px;
+      letter-spacing: -0.02em;
+    }
+
+    .card h2 { font-size: 1.28rem; }
+    .card h3 { font-size: 1.05rem; }
+
+    .subtle {
+      margin-top: -4px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .section-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .kpi {
+      padding: 16px;
+      border-radius: 20px;
+      background: linear-gradient(180deg, #fbfdff 0%, #f6faff 100%);
+      border: 1px solid #e7eef7;
+    }
+
+    .kpi-label {
+      color: var(--muted);
+      font-size: 0.88rem;
+      margin-bottom: 8px;
+    }
+
+    .kpi-value {
+      font-size: clamp(1.1rem, 2vw, 1.7rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+
+    .kpi.positive .kpi-value { color: var(--good); }
+    .kpi.negative .kpi-value { color: var(--bad); }
+    .kpi.info .kpi-value { color: var(--brand-2); }
+
+    label {
+      display: block;
+      font-size: 0.9rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    input, select, button, textarea {
+      font: inherit;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      padding: 12px 14px;
+      background: white;
+      color: var(--text);
+    }
+
+    input:focus, select:focus, textarea:focus {
+      outline: 3px solid rgba(37, 99, 235, 0.15);
+      border-color: var(--brand-2);
+    }
+
+    .field-row {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .field-row-3 {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: 1.5fr 1fr auto;
+      align-items: end;
+    }
+
+    .btn {
+      border: none;
+      border-radius: 14px;
+      padding: 12px 16px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: 0.2s ease;
+    }
+
+    .btn:hover { transform: translateY(-1px); }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%);
+      color: white;
+    }
+    .btn-secondary {
+      background: #edf3ff;
+      color: var(--brand-2);
+      border: 1px solid #d9e5ff;
+    }
+    .btn-soft {
+      background: #eef7f6;
+      color: var(--brand);
+      border: 1px solid #d6ebe9;
+    }
+    .btn-danger {
+      background: #fff2f2;
+      color: var(--bad);
+      border: 1px solid #ffd9d9;
+    }
+
+    .totals-list, .simple-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .total-item, .list-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 14px;
+      border-radius: 16px;
+      background: #fbfdff;
+      border: 1px solid #e8eef6;
+      align-items: center;
+    }
+
+    .total-item strong, .list-row strong { font-size: 0.95rem; }
+    .amount { font-weight: 800; }
+    .muted { color: var(--muted); }
+
+    .category-card {
+      border: 1px dashed #cdd9ea;
+      border-radius: 18px;
+      padding: 16px;
+      background: #fcfdff;
+    }
+
+    .dynamic-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .chip-note {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #fff7ed;
+      color: var(--warn);
+      border: 1px solid #fde7cf;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 18px;
+    }
+
+    .status {
+      margin-top: 12px;
+      min-height: 24px;
+      color: var(--good);
+      font-weight: 700;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }
+
+    th, td {
+      padding: 12px;
+      border-bottom: 1px solid #e6edf6;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 0.84rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      border-radius: 18px;
+      border: 1px solid #e6edf6;
+    }
+
+    .chart-card canvas {
+      width: 100% !important;
+      max-height: 360px;
+    }
+
+    .footer-note {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-top: 12px;
+    }
+
+    .hidden { display: none !important; }
+
+    @media (max-width: 1080px) {
+      .grid-2, .grid-3, .grid-4, .kpi-grid, .field-row { grid-template-columns: 1fr; }
+      .hero { grid-template-columns: 90px 1fr; }
+      .pill-group { justify-content: flex-start; grid-column: 1 / -1; }
+    }
+
+    @media (max-width: 720px) {
+      .app-shell { padding: 16px; }
+      .hero { grid-template-columns: 1fr; text-align: center; }
+      .hero img { width: 90px; margin: 0 auto; }
+      .section-title { flex-direction: column; align-items: flex-start; }
+      .field-row-3 { grid-template-columns: 1fr; }
+      .actions { justify-content: stretch; }
+      .actions .btn { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="hero">
+      <img src="icon.png" alt="Icono HomeFlow" />
+      <div>
+        <h1>HomeFlow</h1>
+        <p>Control mensual del hogar con ingresos, gastos, inversiones, neto ahorrado, tasa de ahorro, histórico y exportación a Excel.</p>
+      </div>
+      <div class="pill-group">
+        <span class="pill">Ahorro neto</span>
+        <span class="pill">Tasa de ahorro</span>
+        <span class="pill">Excel</span>
+        <span class="pill">PWA</span>
+      </div>
+    </header>
+
+    <div class="auth-card" id="auth-card">
+      <div class="section-title">
+        <div>
+          <h2>Acceso familiar</h2>
+          <p class="subtle">Cada correo tiene su propia familia, configuración, períodos, inversiones y depósitos.</p>
+        </div>
+        <span class="chip-note" id="auth-state-chip">Sin iniciar sesión</span>
+      </div>
+      <div class="auth-grid" id="auth-form">
+        <div>
+          <label for="auth-email">Correo</label>
+          <input id="auth-email" type="email" placeholder="tu@email.com" />
+        </div>
+        <div>
+          <label for="auth-password">Contraseña</label>
+          <input id="auth-password" type="password" placeholder="••••••••" />
+        </div>
+        <div>
+          <label for="auth-password-repeat">Repetir contraseña</label>
+          <input id="auth-password-repeat" type="password" placeholder="Solo para registro" />
+        </div>
+        <button class="btn btn-primary" id="login-btn">Entrar</button>
+        <button class="btn btn-secondary" id="register-btn">Crear cuenta</button>
+        <button class="btn btn-danger hidden" id="logout-btn">Salir</button>
+      </div>
+      <div class="auth-note" id="auth-status">Inicia sesión o crea una cuenta para sincronizar HomeFlow con Firebase.</div>
+    </div>
+
+    <div id="app-main" class="hidden">
+    <nav class="tabs" aria-label="Secciones principales">
+      <button class="tab-button active" data-tab="mensual">Calculadora mensual</button>
+      <button class="tab-button" data-tab="interes">Interés compuesto</button>
+      <button class="tab-button" data-tab="historico">Histórico</button>
+    </nav>
+
+    <section id="tab-mensual" class="tab-panel active">
+      <div class="card">
+        <div class="section-title">
+          <div>
+            <h2>Período</h2>
+            <p class="subtle">Carga el mes, rellena datos y guarda. La versión incluida usa almacenamiento local y deja preparado el punto de integración con Firebase.</p>
+          </div>
+          <span class="chip-note">Guardado actual: Firebase</span>
+        </div>
+        <div class="grid grid-4">
+          <div>
+            <label for="period-month">Mes</label>
+            <select id="period-month"></select>
+          </div>
+          <div>
+            <label for="period-year">Año</label>
+            <input id="period-year" type="number" min="2020" max="2100" step="1" />
+          </div>
+          <div>
+            <label>&nbsp;</label>
+            <button class="btn btn-primary" id="load-period">Cargar período</button>
+          </div>
+          <div>
+            <label>&nbsp;</label>
+            <button class="btn btn-secondary" id="clear-period">Nuevo período vacío</button>
+          </div>
+        </div>
+        <div class="status" id="save-status"></div>
+      </div>
+
+      <div class="card" style="margin-top:18px;">
+        <div class="section-title">
+          <div>
+            <h2>Resumen del mes</h2>
+            <p class="subtle">Este bloque se recalcula automáticamente al editar cualquier valor.</p>
+          </div>
+        </div>
+        <div class="kpi-grid">
+          <div class="kpi info"><div class="kpi-label">Ingresos hogar</div><div class="kpi-value" id="kpi-income">0 €</div></div>
+          <div class="kpi"><div class="kpi-label">Gastos hogar</div><div class="kpi-value" id="kpi-expenses">0 €</div></div>
+          <div class="kpi positive"><div class="kpi-label">Neto ahorrado</div><div class="kpi-value" id="kpi-savings">0 €</div></div>
+          <div class="kpi info"><div class="kpi-label">Tasa de ahorro</div><div class="kpi-value" id="kpi-rate">0 %</div></div>
+          <div class="kpi"><div class="kpi-label">Inversiones</div><div class="kpi-value" id="kpi-investments">0 €</div></div>
+        </div>
+      </div>
+
+      <div class="grid grid-2" style="margin-top:18px;">
+        <div class="card">
+          <h2>Ingresos Diego</h2>
+          <div class="field-row">
+            <div>
+              <label for="income-diego-hospital">Hospital Universitario Puerta de Hierro</label>
+              <input type="number" min="0" step="0.01" id="income-diego-hospital" class="money-field" />
+            </div>
+            <div>
+              <label for="income-diego-ceu">CEU San Pablo</label>
+              <input type="number" min="0" step="0.01" id="income-diego-ceu" class="money-field" />
+            </div>
+          </div>
+          <div class="category-card" style="margin-top:16px;">
+            <div class="section-title"><h3>Otros ingresos Diego</h3><span class="muted">Concepto + importe</span></div>
+            <div class="field-row-3">
+              <div>
+                <label for="diego-other-name">Nombre</label>
+                <input id="diego-other-name" type="text" placeholder="Ej. devolución, clase, venta" />
+              </div>
+              <div>
+                <label for="diego-other-amount">Importe neto</label>
+                <input id="diego-other-amount" type="number" min="0" step="0.01" />
+              </div>
+              <button class="btn btn-soft" data-add-list="incomeDiegoOther">Añadir</button>
+            </div>
+            <div id="list-incomeDiegoOther" class="dynamic-list"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Ingresos Itxaso</h2>
+          <div class="field-row">
+            <div>
+              <label for="income-itxaso-hospital">Hospital Universitario Infanta Leonor</label>
+              <input type="number" min="0" step="0.01" id="income-itxaso-hospital" class="money-field" />
+            </div>
+            <div>
+              <label for="income-itxaso-other-fixed">Otros ingresos fijos</label>
+              <input type="number" min="0" step="0.01" id="income-itxaso-other-fixed" class="money-field" />
+            </div>
+          </div>
+          <div class="category-card" style="margin-top:16px;">
+            <div class="section-title"><h3>Otros ingresos Itxaso</h3><span class="muted">Concepto + importe</span></div>
+            <div class="field-row-3">
+              <div>
+                <label for="itxaso-other-name">Nombre</label>
+                <input id="itxaso-other-name" type="text" placeholder="Ej. devolución, bonus, ingreso extra" />
+              </div>
+              <div>
+                <label for="itxaso-other-amount">Importe neto</label>
+                <input id="itxaso-other-amount" type="number" min="0" step="0.01" />
+              </div>
+              <button class="btn btn-soft" data-add-list="incomeItxasoOther">Añadir</button>
+            </div>
+            <div id="list-incomeItxasoOther" class="dynamic-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-2" style="margin-top:18px;">
+        <div class="card">
+          <h2>Gastos comunes</h2>
+          <div class="field-row">
+            <div><label for="expense-fibra">Fibra óptica</label><input type="number" min="0" step="0.01" id="expense-fibra" class="money-field" /></div>
+            <div><label for="expense-luz">Luz</label><input type="number" min="0" step="0.01" id="expense-luz" class="money-field" /></div>
+            <div><label for="expense-gas">Gas</label><input type="number" min="0" step="0.01" id="expense-gas" class="money-field" /></div>
+            <div><label for="expense-agua">Agua</label><input type="number" min="0" step="0.01" id="expense-agua" class="money-field" /></div>
+            <div><label for="expense-alquiler">Alquiler piso</label><input type="number" min="0" step="0.01" id="expense-alquiler" class="money-field" /></div>
+            <div><label for="expense-garaje">Garaje</label><input type="number" min="0" step="0.01" id="expense-garaje" class="money-field" /></div>
+            <div><label for="expense-retiro-aura">Retiro Aura</label><input type="number" min="0" step="0.01" id="expense-retiro-aura" class="money-field" /></div>
+          </div>
+
+          <div class="category-card" style="margin-top:16px;">
+            <div class="section-title"><h3>Compras supermercado</h3><span class="muted">Añade cada compra por separado</span></div>
+            <div class="field-row-3">
+              <div>
+                <label for="supermarket-name">Concepto / tienda</label>
+                <input id="supermarket-name" type="text" placeholder="Ej. carne, Ahorramás, Mercadona" />
+              </div>
+              <div>
+                <label for="supermarket-amount">Importe</label>
+                <input id="supermarket-amount" type="number" min="0" step="0.01" />
+              </div>
+              <button class="btn btn-soft" data-add-list="supermarket">Añadir</button>
+            </div>
+            <div id="list-supermarket" class="dynamic-list"></div>
+          </div>
+
+          <div class="category-card" style="margin-top:16px;">
+            <div class="section-title"><h3>Otros gastos comunes</h3><span class="muted">Concepto + importe</span></div>
+            <div class="field-row-3">
+              <div>
+                <label for="common-name">Concepto</label>
+                <input id="common-name" type="text" placeholder="Ej. comunidad, limpieza, seguro hogar" />
+              </div>
+              <div>
+                <label for="common-amount">Importe</label>
+                <input id="common-amount" type="number" min="0" step="0.01" />
+              </div>
+              <button class="btn btn-soft" data-add-list="commonOther">Añadir</button>
+            </div>
+            <div id="list-commonOther" class="dynamic-list"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Inversiones</h2>
+          <div class="category-card">
+            <div class="section-title"><h3>Inversiones MyInvestor</h3><span class="muted">Salida mensual de dinero</span></div>
+            <div class="field-row-3">
+              <div>
+                <label for="myinvestor-name">Concepto</label>
+                <input id="myinvestor-name" type="text" placeholder="Ej. aportación mensual" />
+              </div>
+              <div>
+                <label for="myinvestor-amount">Importe</label>
+                <input id="myinvestor-amount" type="number" min="0" step="0.01" />
+              </div>
+              <button class="btn btn-soft" data-add-list="myInvestor">Añadir</button>
+            </div>
+            <div id="list-myInvestor" class="dynamic-list"></div>
+          </div>
+
+          <div class="category-card" style="margin-top:16px;">
+            <div class="section-title"><h3>Otras inversiones</h3><span class="muted">Concepto + importe</span></div>
+            <div class="field-row-3">
+              <div>
+                <label for="other-invest-name">Concepto</label>
+                <input id="other-invest-name" type="text" placeholder="Ej. ETF, fondo, cuenta ahorro" />
+              </div>
+              <div>
+                <label for="other-invest-amount">Importe</label>
+                <input id="other-invest-amount" type="number" min="0" step="0.01" />
+              </div>
+              <button class="btn btn-soft" data-add-list="otherInvestments">Añadir</button>
+            </div>
+            <div id="list-otherInvestments" class="dynamic-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-3" style="margin-top:18px;">
+        <div class="card">
+          <h2>Gastos Diego</h2>
+          <div class="field-row-3">
+            <div>
+              <label for="diego-expense-name">Concepto</label>
+              <input id="diego-expense-name" type="text" placeholder="Ej. transporte, ropa, comida" />
+            </div>
+            <div>
+              <label for="diego-expense-amount">Importe</label>
+              <input id="diego-expense-amount" type="number" min="0" step="0.01" />
+            </div>
+            <button class="btn btn-soft" data-add-list="expensesDiego">Añadir</button>
+          </div>
+          <div id="list-expensesDiego" class="dynamic-list"></div>
+        </div>
+
+        <div class="card">
+          <h2>Gastos Itxaso</h2>
+          <div class="field-row-3">
+            <div>
+              <label for="itxaso-expense-name">Concepto</label>
+              <input id="itxaso-expense-name" type="text" placeholder="Ej. transporte, ropa, cuidado" />
+            </div>
+            <div>
+              <label for="itxaso-expense-amount">Importe</label>
+              <input id="itxaso-expense-amount" type="number" min="0" step="0.01" />
+            </div>
+            <button class="btn btn-soft" data-add-list="expensesItxaso">Añadir</button>
+          </div>
+          <div id="list-expensesItxaso" class="dynamic-list"></div>
+        </div>
+
+        <div class="card">
+          <h2>Gastos Iago</h2>
+          <div class="field-row">
+            <div>
+              <label for="iago-category">Categoría</label>
+              <select id="iago-category">
+                <option value="Colegio">Colegio</option>
+                <option value="Ropa">Ropa</option>
+                <option value="Medicinas">Medicinas</option>
+                <option value="Pañales">Pañales</option>
+                <option value="Materiales colegio">Materiales colegio</option>
+                <option value="Actividades">Actividades</option>
+                <option value="Juguetes / ocio">Juguetes / ocio</option>
+                <option value="Otros gastos Iago">Otros gastos Iago</option>
+              </select>
+            </div>
+            <div>
+              <label for="iago-expense-amount">Importe</label>
+              <input id="iago-expense-amount" type="number" min="0" step="0.01" />
+            </div>
+          </div>
+          <div class="field-row" style="margin-top:12px; grid-template-columns: 1fr auto; align-items:end;">
+            <div>
+              <label for="iago-expense-name">Concepto exacto</label>
+              <input id="iago-expense-name" type="text" placeholder="Ej. mensualidad, abrigo, jarabe" />
+            </div>
+            <button class="btn btn-soft" data-add-list="expensesIago">Añadir</button>
+          </div>
+          <div id="list-expensesIago" class="dynamic-list"></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:18px;">
+        <div class="section-title">
+          <div>
+            <h2>Totales por bloque</h2>
+            <p class="subtle">Lectura rápida del reparto del dinero del mes.</p>
+          </div>
+        </div>
+        <div class="grid grid-3">
+          <div class="totals-list" id="totals-income-box"></div>
+          <div class="totals-list" id="totals-expenses-box"></div>
+          <div class="totals-list" id="totals-balance-box"></div>
+        </div>
+        <div class="actions">
+          <button class="btn btn-secondary" id="save-period">Guardar</button>
+          <button class="btn btn-primary" id="save-and-export">Guardar y descargar Excel del mes</button>
+        </div>
+        <div class="footer-note">Integración preparada para Firebase: busca <strong>storageAdapter</strong> en el script y sustituye las funciones save/getAll/getPeriod por tu capa Firestore cuando la tengas.</div>
+      </div>
+    </section>
+
+    <section id="tab-interes" class="tab-panel">
+      <div class="grid grid-2">
+        <div class="card">
+          <h2>Calculadora de interés compuesto</h2>
+          <p class="subtle">Inspirada en el formato visual que querías: cálculo anual con barras separando dinero aportado e intereses.</p>
+          <div class="grid grid-2">
+            <div>
+              <label for="compound-initial">Dinero inicial</label>
+              <input id="compound-initial" type="number" min="0" step="0.01" value="10000" />
+            </div>
+            <div>
+              <label for="compound-monthly">Aportación mensual</label>
+              <input id="compound-monthly" type="number" min="0" step="0.01" value="300" />
+            </div>
+            <div>
+              <label for="compound-rate">Rentabilidad anual estimada (%)</label>
+              <input id="compound-rate" type="number" min="0" step="0.01" value="7" />
+            </div>
+            <div>
+              <label for="compound-years">Años</label>
+              <input id="compound-years" type="number" min="1" step="1" value="20" />
+            </div>
+          </div>
+          <div class="actions" style="margin-top:16px;">
+            <button class="btn btn-primary" id="calculate-compound">Calcular</button>
+          </div>
+          <div class="kpi-grid" style="margin-top:18px; grid-template-columns: repeat(3, minmax(0,1fr));">
+            <div class="kpi info"><div class="kpi-label">Capital final</div><div class="kpi-value" id="compound-final">0 €</div></div>
+            <div class="kpi"><div class="kpi-label">Total aportado</div><div class="kpi-value" id="compound-invested">0 €</div></div>
+            <div class="kpi positive"><div class="kpi-label">Intereses generados</div><div class="kpi-value" id="compound-interest">0 €</div></div>
+          </div>
+        </div>
+
+        <div class="card chart-card">
+          <h2>Gráfico por año</h2>
+          <p class="subtle">Barra por año: dinero aportado frente a intereses acumulados.</p>
+          <canvas id="compound-chart"></canvas>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:18px;">
+        <h2>Tabla anual</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Año</th>
+                <th>Capital inicio año</th>
+                <th>Aportado acumulado</th>
+                <th>Intereses acumulados</th>
+                <th>Capital final</th>
+              </tr>
+            </thead>
+            <tbody id="compound-table-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-historico" class="tab-panel">
+      <div class="card">
+        <div class="section-title">
+          <div>
+            <h2>Histórico</h2>
+            <p class="subtle">Resumen mensual, gráficos comparativos y exportación de seguridad a Excel.</p>
+          </div>
+          <div class="actions" style="margin-top:0;">
+            <button class="btn btn-secondary" id="export-history">Descargar Excel histórico</button>
+            <button class="btn btn-soft" id="export-json">Exportar copia JSON</button>
+          </div>
+        </div>
+        <div class="kpi-grid">
+          <div class="kpi info"><div class="kpi-label">Ingreso total histórico</div><div class="kpi-value" id="hist-total-income">0 €</div></div>
+          <div class="kpi"><div class="kpi-label">Gasto total histórico</div><div class="kpi-value" id="hist-total-expenses">0 €</div></div>
+          <div class="kpi positive"><div class="kpi-label">Neto ahorrado acumulado</div><div class="kpi-value" id="hist-total-savings">0 €</div></div>
+          <div class="kpi info"><div class="kpi-label">Tasa media de ahorro</div><div class="kpi-value" id="hist-average-rate">0 %</div></div>
+          <div class="kpi"><div class="kpi-label">Meses guardados</div><div class="kpi-value" id="hist-count">0</div></div>
+        </div>
+      </div>
+
+      <div class="grid grid-3" style="margin-top:18px;">
+        <div class="card chart-card"><h3>Ingresos por mes</h3><canvas id="history-income-chart"></canvas></div>
+        <div class="card chart-card"><h3>Reparto del dinero por mes</h3><canvas id="history-distribution-chart"></canvas></div>
+        <div class="card chart-card"><h3>Neto ahorrado y tasa de ahorro</h3><canvas id="history-savings-chart"></canvas></div>
+      </div>
+
+      <div class="card" style="margin-top:18px;">
+        <h2>Resumen mensual</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Período</th>
+                <th>Ingresos Diego</th>
+                <th>Ingresos Itxaso</th>
+                <th>Ingresos totales</th>
+                <th>Gastos comunes</th>
+                <th>Gastos Diego</th>
+                <th>Gastos Itxaso</th>
+                <th>Gastos Iago</th>
+                <th>Inversiones</th>
+                <th>Gastos totales</th>
+                <th>Neto ahorrado</th>
+                <th>Tasa ahorro</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="history-table-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+    </div>
+  </div>
+
+  
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
+    import {
+      getAuth,
+      createUserWithEmailAndPassword,
+      signInWithEmailAndPassword,
+      signOut,
+      onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js";
+    import {
+      getFirestore,
+      doc,
+      setDoc,
+      getDoc,
+      collection,
+      getDocs,
+      deleteDoc,
+      serverTimestamp
+    } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCl46HDjqyh_v3JBOLb9B2oYFUlhAwRI34",
+      authDomain: "homeflow-app-4d547.firebaseapp.com",
+      projectId: "homeflow-app-4d547",
+      storageBucket: "homeflow-app-4d547.firebasestorage.app",
+      messagingSenderId: "514123198762",
+      appId: "1:514123198762:web:f4614dd146dae1d714ae53"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    const monthNames = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+    const defaultConfig = () => ({
+      adults: [
+        { id: crypto.randomUUID(), name: 'Diego', color: '#2563eb' },
+        { id: crypto.randomUUID(), name: 'Itxaso', color: '#14b8a6' }
+      ],
+      incomeSources: [],
+      dependents: [{ id: crypto.randomUUID(), name: 'Iago', type: 'Hijo' }],
+      dependentCategories: ['Colegio','Ropa','Medicinas','Pañales','Materiales colegio','Actividades','Juguetes / ocio','Otros gastos'],
+      fixedExpenses: [
+        { id: crypto.randomUUID(), name: 'Fibra óptica', defaultAmount: 0 },
+        { id: crypto.randomUUID(), name: 'Luz', defaultAmount: 0 },
+        { id: crypto.randomUUID(), name: 'Gas', defaultAmount: 0 },
+        { id: crypto.randomUUID(), name: 'Agua', defaultAmount: 0 },
+        { id: crypto.randomUUID(), name: 'Alquiler piso', defaultAmount: 0 },
+        { id: crypto.randomUUID(), name: 'Garaje', defaultAmount: 0 },
+        { id: crypto.randomUUID(), name: 'Retiro Aura', defaultAmount: 0 }
+      ]
+    });
+
+    const state = {
+      config: defaultConfig(),
+      currentPeriod: null,
+      form: null,
+      charts: {},
+      deposits: [],
+      user: null
+    };
+
+    const storageAdapter = {
+      async getAll() {
+        requireAuth();
+        const snapshot = await getDocs(collection(db, 'familias', state.user.uid, 'periodos'));
+        const data = {};
+        snapshot.forEach((item) => data[item.id] = item.data());
+        return data;
+      },
+      async save(periodId, data) {
+        requireAuth();
+        await setDoc(doc(db, 'familias', state.user.uid, 'periodos', periodId), {
+          ...data,
+          meta: {
+            ...(data.meta || {}),
+            updatedAt: new Date().toISOString()
+          }
+        });
+      },
+      async getPeriod(periodId) {
+        requireAuth();
+        const snap = await getDoc(doc(db, 'familias', state.user.uid, 'periodos', periodId));
+        return snap.exists() ? snap.data() : null;
+      },
+      async removePeriod(periodId) {
+        requireAuth();
+        await deleteDoc(doc(db, 'familias', state.user.uid, 'periodos', periodId));
+      }
+    };
+
+    function requireAuth() {
+      if (!state.user) throw new Error('Debes iniciar sesión para usar HomeFlow.');
+    }
+
+    async function loadRemoteConfig() {
+      requireAuth();
+      const snap = await getDoc(doc(db, 'familias', state.user.uid, 'meta', 'config'));
+      if (snap.exists()) return snap.data();
+      const cfg = defaultConfig();
+      await saveRemoteConfig(cfg, true);
+      return cfg;
+    }
+
+    async function saveRemoteConfig(config, silent = false) {
+      requireAuth();
+      await setDoc(doc(db, 'familias', state.user.uid, 'meta', 'config'), {
+        ...config,
+        updatedAt: serverTimestamp(),
+        email: state.user.email || null
+      });
+      if (!silent) setStatus('Configuración guardada correctamente en Firebase.');
+    }
+
+    async function loadRemoteDeposits() {
+      requireAuth();
+      const snap = await getDoc(doc(db, 'familias', state.user.uid, 'meta', 'deposits'));
+      if (!snap.exists()) return [];
+      return snap.data().items || [];
+    }
+
+    async function saveRemoteDeposits() {
+      requireAuth();
+      await setDoc(doc(db, 'familias', state.user.uid, 'meta', 'deposits'), {
+        items: state.deposits,
+        updatedAt: serverTimestamp()
+      });
+      setStatus('Depósitos guardados correctamente en Firebase.');
+    }
+
+    function createEmptyPeriodData(config) {
+      const adults = {};
+      config.adults.forEach(a => adults[a.id] = { sourceAmounts: {}, otherIncome: [], investmentsMyInvestor: [], investmentsOther: [], personalExpenses: [], depositInterestIncome: [] });
+      config.incomeSources.forEach(src => { if (adults[src.ownerId]) adults[src.ownerId].sourceAmounts[src.id] = 0; });
+      const fixed = {};
+      config.fixedExpenses.forEach(exp => fixed[exp.id] = Number(exp.defaultAmount || 0));
+      const dependents = {};
+      config.dependents.forEach(dep => dependents[dep.id] = []);
+      return {
+        adults,
+        common: { fixed, supermarket: [], other: [] },
+        dependents,
+        meta: { updatedAt: null }
+      };
+    }
+
+    function ensureFormMatchesConfig() {
+      const fresh = createEmptyPeriodData(state.config);
+      const current = state.form || fresh;
+      state.config.adults.forEach(a => {
+        if (!current.adults[a.id]) current.adults[a.id] = structuredClone(fresh.adults[a.id]);
+        state.config.incomeSources.filter(s => s.ownerId === a.id).forEach(src => {
+          if (current.adults[a.id].sourceAmounts[src.id] == null) current.adults[a.id].sourceAmounts[src.id] = 0;
+        });
+      });
+      Object.keys(current.adults).forEach(id => { if (!state.config.adults.find(a => a.id === id)) delete current.adults[id]; });
+      state.config.fixedExpenses.forEach(exp => { if (current.common.fixed[exp.id] == null) current.common.fixed[exp.id] = Number(exp.defaultAmount || 0); });
+      Object.keys(current.common.fixed).forEach(id => { if (!state.config.fixedExpenses.find(e => e.id === id)) delete current.common.fixed[id]; });
+      state.config.dependents.forEach(dep => { if (!current.dependents[dep.id]) current.dependents[dep.id] = []; });
+      Object.keys(current.dependents).forEach(id => { if (!state.config.dependents.find(d => d.id === id)) delete current.dependents[id]; });
+      state.form = current;
+    }
+
+    function initStaticUI() {
+      populatePeriodSelectors();
+      bindTabs();
+      bindActions();
+      calculateCompound();
+      updateAuthUI();
+    }
+
+    function populatePeriodSelectors() {
+      const monthSelect = document.getElementById('period-month');
+      monthSelect.innerHTML = '';
+      monthNames.forEach((name, index) => {
+        const option = document.createElement('option');
+        option.value = String(index + 1).padStart(2, '0');
+        option.textContent = name;
+        monthSelect.appendChild(option);
+      });
+      document.getElementById('period-year').value = new Date().getFullYear();
+      monthSelect.value = String(new Date().getMonth() + 1).padStart(2, '0');
+    }
+
+    function bindTabs() {
+      document.querySelectorAll('.tab-button').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+          document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+          btn.classList.add('active');
+          document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+          if (btn.dataset.tab === 'historico' && state.user) refreshHistoricalView();
+          if (btn.dataset.tab === 'interes') calculateCompound();
+          if (btn.dataset.tab === 'depositos' && state.user) renderDepositsUI();
+          if (btn.dataset.tab === 'configuracion' && state.user) renderConfigUI();
+        });
+      });
+    }
+
+    function bindActions() {
+      document.getElementById('go-config').addEventListener('click', () => document.querySelector('[data-tab="configuracion"]').click());
+      document.getElementById('load-period').addEventListener('click', loadSelectedPeriod);
+      document.getElementById('clear-period').addEventListener('click', clearCurrentView);
+      document.getElementById('save-period').addEventListener('click', saveCurrentPeriod);
+      document.getElementById('save-and-export').addEventListener('click', async () => { await saveCurrentPeriod(); exportSinglePeriodExcel(); });
+      document.getElementById('calculate-compound').addEventListener('click', calculateCompound);
+      document.getElementById('export-history').addEventListener('click', exportHistoryExcel);
+      document.getElementById('export-json').addEventListener('click', exportHistoryJSON);
+      document.getElementById('save-config').addEventListener('click', saveConfiguration);
+      document.getElementById('add-adult').addEventListener('click', addAdult);
+      document.getElementById('add-dependent').addEventListener('click', addDependent);
+      document.getElementById('add-source').addEventListener('click', addIncomeSource);
+      document.getElementById('add-fixed-expense').addEventListener('click', addFixedExpense);
+      document.getElementById('add-dep-category').addEventListener('click', addDependentCategory);
+      document.getElementById('add-deposit').addEventListener('click', addDeposit);
+      document.getElementById('save-deposits').addEventListener('click', saveRemoteDeposits);
+      document.getElementById('login-btn').addEventListener('click', loginUser);
+      document.getElementById('register-btn').addEventListener('click', registerUser);
+      document.getElementById('logout-btn').addEventListener('click', logoutUser);
+      ['auth-email','auth-password','auth-password-repeat'].forEach(id => {
+        document.getElementById(id).addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') loginUser();
+        });
+      });
+    }
+
+    async function registerUser() {
+      const email = document.getElementById('auth-email').value.trim();
+      const password = document.getElementById('auth-password').value;
+      const repeat = document.getElementById('auth-password-repeat').value;
+      if (!email || !password) return setAuthStatus('Escribe correo y contraseña.');
+      if (password !== repeat) return setAuthStatus('Las contraseñas no coinciden.');
+      try {
+        setAuthStatus('Creando cuenta...');
+        await createUserWithEmailAndPassword(auth, email, password);
+      } catch (error) {
+        setAuthStatus(readableAuthError(error));
+      }
+    }
+
+    async function loginUser() {
+      const email = document.getElementById('auth-email').value.trim();
+      const password = document.getElementById('auth-password').value;
+      if (!email || !password) return setAuthStatus('Escribe correo y contraseña.');
+      try {
+        setAuthStatus('Entrando...');
+        await signInWithEmailAndPassword(auth, email, password);
+      } catch (error) {
+        setAuthStatus(readableAuthError(error));
+      }
+    }
+
+    async function logoutUser() {
+      await signOut(auth);
+    }
+
+    function updateAuthUI() {
+      const main = document.getElementById('app-main');
+      const logout = document.getElementById('logout-btn');
+      const chip = document.getElementById('auth-state-chip');
+      if (state.user) {
+        main.classList.remove('hidden');
+        logout.classList.remove('hidden');
+        chip.textContent = state.user.email;
+        setAuthStatus(`Sesión iniciada como ${state.user.email}.`);
+      } else {
+        main.classList.add('hidden');
+        logout.classList.add('hidden');
+        chip.textContent = 'Sin iniciar sesión';
+      }
+    }
+
+    async function bootstrapFamily() {
+      state.config = await loadRemoteConfig();
+      state.deposits = await loadRemoteDeposits();
+      state.currentPeriod = getSelectedPeriodId();
+      state.form = await storageAdapter.getPeriod(state.currentPeriod) || createEmptyPeriodData(state.config);
+      ensureFormMatchesConfig();
+      renderConfigUI();
+      renderDepositsUI();
+      checkSetupWarning();
+      renderMonthlyForm();
+      renderMonthlySummary();
+      await refreshHistoricalView();
+      calculateCompound();
+    }
+
+    function isConfigReady() {
+      return state.config.adults.length > 0 && state.config.incomeSources.length > 0;
+    }
+
+    function checkSetupWarning() {
+      document.getElementById('setup-warning').classList.toggle('hidden', isConfigReady());
+    }
+
+    function addAdult() {
+      const name = document.getElementById('adult-name').value.trim();
+      const color = document.getElementById('adult-color').value || '#2563eb';
+      if (!name) return;
+      state.config.adults.push({ id: crypto.randomUUID(), name, color });
+      document.getElementById('adult-name').value = '';
+      renderConfigUI();
+    }
+
+    function addDependent() {
+      const name = document.getElementById('dependent-name').value.trim();
+      const type = document.getElementById('dependent-type').value;
+      if (!name) return;
+      state.config.dependents.push({ id: crypto.randomUUID(), name, type });
+      document.getElementById('dependent-name').value = '';
+      renderConfigUI();
+    }
+
+    function addIncomeSource() {
+      const ownerId = document.getElementById('source-owner').value;
+      const name = document.getElementById('source-name').value.trim();
+      if (!ownerId || !name) return;
+      state.config.incomeSources.push({ id: crypto.randomUUID(), ownerId, name });
+      document.getElementById('source-name').value = '';
+      renderConfigUI();
+    }
+
+    function addFixedExpense() {
+      const name = document.getElementById('fixed-expense-name').value.trim();
+      const defaultAmount = parseFloat(document.getElementById('fixed-expense-default').value || 0) || 0;
+      if (!name) return;
+      state.config.fixedExpenses.push({ id: crypto.randomUUID(), name, defaultAmount });
+      document.getElementById('fixed-expense-name').value = '';
+      document.getElementById('fixed-expense-default').value = '';
+      renderConfigUI();
+    }
+
+    function addDependentCategory() {
+      const name = document.getElementById('dep-category-name').value.trim();
+      if (!name) return;
+      state.config.dependentCategories.push(name);
+      document.getElementById('dep-category-name').value = '';
+      renderConfigUI();
+    }
+
+    function renderConfigUI() {
+      fillOwnerSelect('source-owner');
+      fillOwnerSelect('deposit-owner');
+      renderSimpleList('adult-list', state.config.adults, a => `${a.name} · ${a.color}`, (i)=>{ state.config.adults.splice(i,1); renderConfigUI(); });
+      renderSimpleList('dependent-list', state.config.dependents, d => `${d.name} · ${d.type}`, (i)=>{ state.config.dependents.splice(i,1); renderConfigUI(); });
+      renderSimpleList('source-list', state.config.incomeSources, s => `${getAdultName(s.ownerId)} · ${s.name}`, (i)=>{ state.config.incomeSources.splice(i,1); renderConfigUI(); });
+      renderSimpleList('fixed-expense-list', state.config.fixedExpenses, e => `${e.name}${e.defaultAmount ? ' · '+formatCurrency(e.defaultAmount): ''}`, (i)=>{ state.config.fixedExpenses.splice(i,1); renderConfigUI(); });
+      renderSimpleList('dep-category-list', state.config.dependentCategories.map(name => ({name})), c => c.name, (i)=>{ state.config.dependentCategories.splice(i,1); renderConfigUI(); });
+    }
+
+    async function saveConfiguration() {
+      ensureFormMatchesConfig();
+      await saveRemoteConfig(state.config);
+      renderMonthlyForm();
+      renderMonthlySummary();
+      await refreshHistoricalView();
+      checkSetupWarning();
+    }
+
+    function renderSimpleList(containerId, items, labelFn, removeFn) {
+      const container = document.getElementById(containerId);
+      container.innerHTML = '';
+      if (!items.length) {
+        container.innerHTML = `<div class="list-row"><span class="muted">Todavía no hay elementos.</span></div>`;
+        return;
+      }
+      items.forEach((item, idx) => {
+        const row = document.createElement('div');
+        row.className = 'list-row';
+        row.innerHTML = `<div><strong>${escapeHtml(labelFn(item))}</strong></div><button class="btn btn-danger" style="padding:8px 12px;">Eliminar</button>`;
+        row.querySelector('button').addEventListener('click', removeFn.bind(null, idx));
+        container.appendChild(row);
+      });
+    }
+
+    function fillOwnerSelect(id) {
+      const select = document.getElementById(id);
+      if (!select) return;
+      select.innerHTML = '';
+      state.config.adults.forEach(a => {
+        const opt = document.createElement('option');
+        opt.value = a.id;
+        opt.textContent = a.name;
+        select.appendChild(opt);
+      });
+    }
+
+    function getSelectedPeriodId() {
+      return `${document.getElementById('period-year').value}-${document.getElementById('period-month').value}`;
+    }
+
+    async function loadSelectedPeriod() {
+      try {
+        requireAuth();
+        state.currentPeriod = getSelectedPeriodId();
+        const data = await storageAdapter.getPeriod(state.currentPeriod);
+        state.form = data ? structuredClone(data) : createEmptyPeriodData(state.config);
+        ensureFormMatchesConfig();
+        renderMonthlyForm();
+        renderMonthlySummary();
+        setStatus(data ? `Período ${formatPeriod(state.currentPeriod)} cargado.` : `Período ${formatPeriod(state.currentPeriod)} vacío. Puedes empezar a rellenarlo.`);
+      } catch (error) {
+        setStatus(error.message);
+      }
+    }
+
+    function clearCurrentView() {
+      state.form = createEmptyPeriodData(state.config);
+      renderMonthlyForm();
+      renderMonthlySummary();
+      setStatus('Formulario limpio para el período actual.');
+    }
+
+    async function saveCurrentPeriod() {
+      requireAuth();
+      state.currentPeriod = getSelectedPeriodId();
+      state.form.meta.updatedAt = new Date().toISOString();
+      await storageAdapter.save(state.currentPeriod, structuredClone(state.form));
+      setStatus(`Formulario enviado. ${formatPeriod(state.currentPeriod)} guardado correctamente en Firebase.`);
+      await refreshHistoricalView();
+    }
+
+    function renderMonthlyForm() {
+      const area = document.getElementById('monthly-dynamic-area');
+      ensureFormMatchesConfig();
+      area.innerHTML = '';
+
+      const adultsIncomeCard = document.createElement('div');
+      adultsIncomeCard.className = 'grid grid-2';
+      adultsIncomeCard.style.marginTop = '18px';
+      adultsIncomeCard.innerHTML = state.config.adults.map(adult => `
+        <div class="card" id="card-income-${adult.id}">
+          <h2>Ingresos ${escapeHtml(adult.name)}</h2>
+          <div class="simple-list" id="income-sources-${adult.id}"></div>
+          <div class="category-card" style="margin-top:16px;">
+            <div class="section-title"><h3>Otros ingresos ${escapeHtml(adult.name)}</h3><span class="muted">Concepto + importe</span></div>
+            <div class="field-row-3">
+              <div><label>Nombre</label><input id="other-income-name-${adult.id}" placeholder="Ej. devolución, bonus, venta" /></div>
+              <div><label>Importe neto</label><input id="other-income-amount-${adult.id}" type="number" min="0" step="0.01" /></div>
+              <button class="btn btn-soft" data-add-dynamic="adult-other-income" data-owner="${adult.id}">Añadir</button>
+            </div>
+            <div id="list-other-income-${adult.id}" class="dynamic-list"></div>
+          </div>
+          <div class="category-card" style="margin-top:16px;">
+            <div class="section-title"><h3>Ingresos por depósitos cobrados</h3><span class="muted">Cuando el depósito paga intereses y entra como ingreso real</span></div>
+            <div class="field-row-3">
+              <div><label>Concepto</label><input id="deposit-income-name-${adult.id}" placeholder="Ej. interés depósito Banco X" /></div>
+              <div><label>Importe neto</label><input id="deposit-income-amount-${adult.id}" type="number" min="0" step="0.01" /></div>
+              <button class="btn btn-soft" data-add-dynamic="deposit-income" data-owner="${adult.id}">Añadir</button>
+            </div>
+            <div id="list-deposit-income-${adult.id}" class="dynamic-list"></div>
+          </div>
+        </div>
+      `).join('');
+      area.appendChild(adultsIncomeCard);
+
+      state.config.adults.forEach(adult => {
+        const srcBox = document.getElementById(`income-sources-${adult.id}`);
+        const sources = state.config.incomeSources.filter(s => s.ownerId === adult.id);
+        if (!sources.length) {
+          srcBox.innerHTML = '<div class="list-row"><span class="muted">No hay fuentes de ingresos configuradas para este titular.</span></div>';
+        } else {
+          srcBox.innerHTML = sources.map(src => `
+            <div>
+              <label for="src-${src.id}">${escapeHtml(src.name)}</label>
+              <input id="src-${src.id}" type="number" min="0" step="0.01" value="${num(state.form.adults[adult.id].sourceAmounts[src.id]) || ''}" />
+            </div>
+          `).join('');
+          sources.forEach(src => {
+            document.getElementById(`src-${src.id}`).addEventListener('input', e => {
+              state.form.adults[adult.id].sourceAmounts[src.id] = parseFloat(e.target.value || 0) || 0;
+              renderMonthlySummary();
+            });
+          });
+        }
+      });
+
+      const expensesAndInvestments = document.createElement('div');
+      expensesAndInvestments.className = 'grid grid-2';
+      expensesAndInvestments.style.marginTop = '18px';
+      expensesAndInvestments.innerHTML = `
+        <div class="card">
+          <h2>Gastos comunes</h2>
+          <div id="fixed-expenses-box" class="simple-list"></div>
+          <div class="category-card" style="margin-top:16px;">
+            <div class="section-title"><h3>Compras supermercado</h3><span class="muted">Añade cada compra por separado</span></div>
+            <div class="field-row-3">
+              <div><label>Concepto / tienda</label><input id="supermarket-name" placeholder="Ej. carne, Ahorramás, Mercadona" /></div>
+              <div><label>Importe</label><input id="supermarket-amount" type="number" min="0" step="0.01" /></div>
+              <button class="btn btn-soft" data-add-dynamic="supermarket">Añadir</button>
+            </div>
+            <div id="list-supermarket" class="dynamic-list"></div>
+          </div>
+          <div class="category-card" style="margin-top:16px;">
+            <div class="section-title"><h3>Otros gastos comunes</h3><span class="muted">Concepto + importe</span></div>
+            <div class="field-row-3">
+              <div><label>Concepto</label><input id="common-name" placeholder="Ej. comunidad, seguro hogar, limpieza" /></div>
+              <div><label>Importe</label><input id="common-amount" type="number" min="0" step="0.01" /></div>
+              <button class="btn btn-soft" data-add-dynamic="common-other">Añadir</button>
+            </div>
+            <div id="list-commonOther" class="dynamic-list"></div>
+          </div>
+        </div>
+        <div class="card">
+          <h2>Inversiones</h2>
+          <div id="investment-box" class="simple-list"></div>
+        </div>
+      `;
+      area.appendChild(expensesAndInvestments);
+
+      const fixedBox = document.getElementById('fixed-expenses-box');
+      fixedBox.innerHTML = state.config.fixedExpenses.map(exp => `
+        <div>
+          <label for="fixed-${exp.id}">${escapeHtml(exp.name)}</label>
+          <input id="fixed-${exp.id}" type="number" min="0" step="0.01" value="${num(state.form.common.fixed[exp.id]) || ''}" />
+        </div>
+      `).join('');
+      state.config.fixedExpenses.forEach(exp => {
+        document.getElementById(`fixed-${exp.id}`).addEventListener('input', e => {
+          state.form.common.fixed[exp.id] = parseFloat(e.target.value || 0) || 0;
+          renderMonthlySummary();
+        });
+      });
+
+      const invBox = document.getElementById('investment-box');
+      invBox.innerHTML = state.config.adults.map(adult => `
+        <div class="category-card">
+          <div class="section-title"><h3>Inversiones ${escapeHtml(adult.name)}</h3><span class="muted">MyInvestor y otras</span></div>
+          <div class="field-row-3">
+            <div><label>MyInvestor - concepto</label><input id="myi-name-${adult.id}" placeholder="Ej. aportación mensual" /></div>
+            <div><label>Importe</label><input id="myi-amount-${adult.id}" type="number" min="0" step="0.01" /></div>
+            <button class="btn btn-soft" data-add-dynamic="myinvestor" data-owner="${adult.id}">Añadir</button>
+          </div>
+          <div id="list-myinvestor-${adult.id}" class="dynamic-list"></div>
+          <div class="field-row-3" style="margin-top:14px;">
+            <div><label>Otra inversión - concepto</label><input id="other-inv-name-${adult.id}" placeholder="Ej. ETF, fondo, cuenta ahorro" /></div>
+            <div><label>Importe</label><input id="other-inv-amount-${adult.id}" type="number" min="0" step="0.01" /></div>
+            <button class="btn btn-soft" data-add-dynamic="other-investment" data-owner="${adult.id}">Añadir</button>
+          </div>
+          <div id="list-other-investment-${adult.id}" class="dynamic-list"></div>
+        </div>
+      `).join('');
+
+      const personalAndDependents = document.createElement('div');
+      personalAndDependents.className = 'grid grid-3';
+      personalAndDependents.style.marginTop = '18px';
+      personalAndDependents.innerHTML = `
+        ${state.config.adults.map(adult => `
+          <div class="card">
+            <h2>Gastos ${escapeHtml(adult.name)}</h2>
+            <div class="field-row-3">
+              <div><label>Concepto</label><input id="personal-expense-name-${adult.id}" placeholder="Ej. transporte, ropa, comida" /></div>
+              <div><label>Importe</label><input id="personal-expense-amount-${adult.id}" type="number" min="0" step="0.01" /></div>
+              <button class="btn btn-soft" data-add-dynamic="personal-expense" data-owner="${adult.id}">Añadir</button>
+            </div>
+            <div id="list-personal-expense-${adult.id}" class="dynamic-list"></div>
+          </div>
+        `).join('')}
+        ${state.config.dependents.map(dep => `
+          <div class="card">
+            <h2>Gastos ${escapeHtml(dep.name)}</h2>
+            <div class="field-row">
+              <div><label>Categoría</label><select id="dependent-category-${dep.id}">
+                ${state.config.dependentCategories.map(cat => `<option value="${escapeHtml(cat)}">${escapeHtml(cat)}</option>`).join('')}
+              </select></div>
+              <div><label>Importe</label><input id="dependent-amount-${dep.id}" type="number" min="0" step="0.01" /></div>
+            </div>
+            <div class="field-row" style="margin-top:12px; grid-template-columns: 1fr auto; align-items:end;">
+              <div><label>Concepto exacto</label><input id="dependent-name-${dep.id}" placeholder="Ej. mensualidad, abrigo, jarabe" /></div>
+              <button class="btn btn-soft" data-add-dynamic="dependent-expense" data-owner="${dep.id}">Añadir</button>
+            </div>
+            <div id="list-dependent-expense-${dep.id}" class="dynamic-list"></div>
+          </div>
+        `).join('')}
+      `;
+      area.appendChild(personalAndDependents);
+
+      document.querySelectorAll('[data-add-dynamic]').forEach(btn => btn.addEventListener('click', handleDynamicAdd));
+      renderAllDynamicLists();
+    }
+
+    function handleDynamicAdd(e) {
+      const type = e.currentTarget.dataset.addDynamic;
+      const owner = e.currentTarget.dataset.owner;
+      if (type === 'supermarket') {
+        pushItem(state.form.common.supermarket, 'supermarket-name', 'supermarket-amount');
+        renderDynamicList('list-supermarket', state.form.common.supermarket, null);
+      } else if (type === 'common-other') {
+        pushItem(state.form.common.other, 'common-name', 'common-amount');
+        renderDynamicList('list-commonOther', state.form.common.other, null);
+      } else if (type === 'adult-other-income') {
+        pushItem(state.form.adults[owner].otherIncome, `other-income-name-${owner}`, `other-income-amount-${owner}`);
+        renderDynamicList(`list-other-income-${owner}`, state.form.adults[owner].otherIncome, null);
+      } else if (type === 'deposit-income') {
+        pushItem(state.form.adults[owner].depositInterestIncome, `deposit-income-name-${owner}`, `deposit-income-amount-${owner}`);
+        renderDynamicList(`list-deposit-income-${owner}`, state.form.adults[owner].depositInterestIncome, null);
+      } else if (type === 'myinvestor') {
+        pushItem(state.form.adults[owner].investmentsMyInvestor, `myi-name-${owner}`, `myi-amount-${owner}`);
+        renderDynamicList(`list-myinvestor-${owner}`, state.form.adults[owner].investmentsMyInvestor, null);
+      } else if (type === 'other-investment') {
+        pushItem(state.form.adults[owner].investmentsOther, `other-inv-name-${owner}`, `other-inv-amount-${owner}`);
+        renderDynamicList(`list-other-investment-${owner}`, state.form.adults[owner].investmentsOther, null);
+      } else if (type === 'personal-expense') {
+        pushItem(state.form.adults[owner].personalExpenses, `personal-expense-name-${owner}`, `personal-expense-amount-${owner}`);
+        renderDynamicList(`list-personal-expense-${owner}`, state.form.adults[owner].personalExpenses, null);
+      } else if (type === 'dependent-expense') {
+        const nameEl = document.getElementById(`dependent-name-${owner}`);
+        const amtEl = document.getElementById(`dependent-amount-${owner}`);
+        const catEl = document.getElementById(`dependent-category-${owner}`);
+        const name = nameEl.value.trim();
+        const amount = parseFloat(amtEl.value || 0);
+        if (!name || !amount) return;
+        state.form.dependents[owner].push({ name, amount, category: catEl.value });
+        nameEl.value = ''; amtEl.value = '';
+        renderDynamicList(`list-dependent-expense-${owner}`, state.form.dependents[owner], item => `${item.category} · ${item.name}`);
+      }
+      renderMonthlySummary();
+    }
+
+    function pushItem(list, nameId, amountId) {
+      const nameEl = document.getElementById(nameId);
+      const amountEl = document.getElementById(amountId);
+      const name = nameEl.value.trim();
+      const amount = parseFloat(amountEl.value || 0);
+      if (!name || !amount) return;
+      list.push({ name, amount });
+      nameEl.value = ''; amountEl.value = '';
+    }
+
+    function renderAllDynamicLists() {
+      renderDynamicList('list-supermarket', state.form.common.supermarket);
+      renderDynamicList('list-commonOther', state.form.common.other);
+      state.config.adults.forEach(adult => {
+        renderDynamicList(`list-other-income-${adult.id}`, state.form.adults[adult.id].otherIncome);
+        renderDynamicList(`list-deposit-income-${adult.id}`, state.form.adults[adult.id].depositInterestIncome);
+        renderDynamicList(`list-myinvestor-${adult.id}`, state.form.adults[adult.id].investmentsMyInvestor);
+        renderDynamicList(`list-other-investment-${adult.id}`, state.form.adults[adult.id].investmentsOther);
+        renderDynamicList(`list-personal-expense-${adult.id}`, state.form.adults[adult.id].personalExpenses);
+      });
+      state.config.dependents.forEach(dep => renderDynamicList(`list-dependent-expense-${dep.id}`, state.form.dependents[dep.id], item => `${item.category} · ${item.name}`));
+    }
+
+    function renderDynamicList(containerId, list, labelFn = null) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      container.innerHTML = '';
+      if (!list.length) {
+        container.innerHTML = `<div class="list-row"><span class="muted">Todavía no hay elementos añadidos.</span></div>`;
+        return;
+      }
+      list.forEach((item, index) => {
+        const row = document.createElement('div');
+        row.className = 'list-row';
+        const label = labelFn ? labelFn(item) : item.name;
+        row.innerHTML = `<div><strong>${escapeHtml(label)}</strong></div><div style="display:flex;gap:8px;align-items:center;"><span class="amount">${formatCurrency(item.amount)}</span><button class="btn btn-danger" style="padding:8px 12px;">Eliminar</button></div>`;
+        row.querySelector('button').addEventListener('click', () => {
+          list.splice(index, 1);
+          renderDynamicList(containerId, list, labelFn);
+          renderMonthlySummary();
+        });
+        container.appendChild(row);
+      });
+    }
+
+    function calculateTotals(form = state.form) {
+      const adultIncomeBreakdown = {};
+      const adultInvestmentBreakdown = {};
+      let depositInterestIncome = 0;
+      let totalIncome = 0, investments = 0, personalExpenses = 0;
+      state.config.adults.forEach(adult => {
+        const data = form.adults[adult.id] || { sourceAmounts:{}, otherIncome:[], investmentsMyInvestor:[], investmentsOther:[], personalExpenses:[], depositInterestIncome:[] };
+        const income = Object.values(data.sourceAmounts || {}).reduce((a,b)=>a+num(b),0) + sumList(data.otherIncome) + sumList(data.depositInterestIncome);
+        const invest = sumList(data.investmentsMyInvestor) + sumList(data.investmentsOther);
+        const personal = sumList(data.personalExpenses);
+        adultIncomeBreakdown[adult.id] = income;
+        adultInvestmentBreakdown[adult.id] = invest;
+        totalIncome += income;
+        investments += invest;
+        personalExpenses += personal;
+        depositInterestIncome += sumList(data.depositInterestIncome);
+      });
+
+      const fixedExpenses = Object.values(form.common.fixed || {}).reduce((a,b)=>a+num(b),0);
+      const supermarket = sumList(form.common.supermarket);
+      const commonOther = sumList(form.common.other);
+      const commonExpenses = fixedExpenses + supermarket + commonOther;
+
+      let dependentExpenses = 0;
+      state.config.dependents.forEach(dep => {
+        dependentExpenses += sumList(form.dependents[dep.id] || []);
+      });
+
+      const totalExpenses = commonExpenses + personalExpenses + dependentExpenses + investments;
+      const savings = totalIncome - totalExpenses;
+      const savingsRate = totalIncome > 0 ? (savings / totalIncome) * 100 : 0;
+      return {
+        adultIncomeBreakdown, adultInvestmentBreakdown,
+        totalIncome, commonExpenses, personalExpenses, dependentExpenses,
+        investments, totalExpenses, savings, savingsRate, fixedExpenses, supermarket, commonOther, depositInterestIncome
+      };
+    }
+
+    function renderMonthlySummary() {
+      const totals = calculateTotals();
+      setText('kpi-income', formatCurrency(totals.totalIncome));
+      setText('kpi-expenses', formatCurrency(totals.totalExpenses));
+      setText('kpi-savings', formatCurrency(totals.savings));
+      setText('kpi-rate', formatPercent(totals.savingsRate));
+      setText('kpi-investments', formatCurrency(totals.investments));
+      const savingsKpi = document.getElementById('kpi-savings').closest('.kpi');
+      savingsKpi.classList.toggle('positive', totals.savings >= 0);
+      savingsKpi.classList.toggle('negative', totals.savings < 0);
+      document.getElementById('totals-income-box').innerHTML = [
+        ...state.config.adults.map(adult => `<div class="total-item"><strong>Ingresos ${escapeHtml(adult.name)}</strong><span class="amount">${formatCurrency(totals.adultIncomeBreakdown[adult.id] || 0)}</span></div>`),
+        `<div class="total-item"><strong>Ingresos totales</strong><span class="amount">${formatCurrency(totals.totalIncome)}</span></div>`
+      ].join('');
+      document.getElementById('totals-expenses-box').innerHTML = `
+        <div class="total-item"><strong>Gastos comunes</strong><span class="amount">${formatCurrency(totals.commonExpenses)}</span></div>
+        <div class="total-item"><strong>Gastos personales</strong><span class="amount">${formatCurrency(totals.personalExpenses)}</span></div>
+        <div class="total-item"><strong>Dependientes</strong><span class="amount">${formatCurrency(totals.dependentExpenses)}</span></div>
+        <div class="total-item"><strong>Inversiones</strong><span class="amount">${formatCurrency(totals.investments)}</span></div>
+      `;
+      document.getElementById('totals-balance-box').innerHTML = `
+        <div class="total-item"><strong>Neto ahorrado</strong><span class="amount">${formatCurrency(totals.savings)}</span></div>
+        <div class="total-item"><strong>Tasa de ahorro</strong><span class="amount">${formatPercent(totals.savingsRate)}</span></div>
+        <div class="total-item"><strong>Intereses depósitos cobrados</strong><span class="amount">${formatCurrency(totals.depositInterestIncome)}</span></div>
+      `;
+    }
+
+    function addDeposit() {
+      const ownerId = document.getElementById('deposit-owner').value;
+      const name = document.getElementById('deposit-name').value.trim();
+      const platform = document.getElementById('deposit-platform').value.trim();
+      const principal = parseFloat(document.getElementById('deposit-principal').value || 0);
+      const rate = parseFloat(document.getElementById('deposit-rate').value || 0);
+      const startDate = document.getElementById('deposit-start').value;
+      const endDate = document.getElementById('deposit-end').value;
+      const expectedInterest = parseFloat(document.getElementById('deposit-interest-final').value || 0);
+      const status = document.getElementById('deposit-status').value;
+      const paidInterest = parseFloat(document.getElementById('deposit-interest-paid').value || 0);
+      if (!ownerId || !name || !platform || !principal || !endDate) return;
+      state.deposits.push({ id: crypto.randomUUID(), ownerId, name, platform, principal, rate, startDate, endDate, expectedInterest, status, paidInterest });
+      ['deposit-name','deposit-platform','deposit-principal','deposit-rate','deposit-start','deposit-end','deposit-interest-final','deposit-interest-paid'].forEach(id => document.getElementById(id).value = '');
+      renderDepositsUI();
+    }
+
+    function renderDepositsUI() {
+      fillOwnerSelect('deposit-owner');
+      const list = document.getElementById('deposit-list');
+      const alerts = document.getElementById('deposit-alerts');
+      list.innerHTML = '';
+      alerts.innerHTML = '';
+      if (!state.deposits.length) {
+        list.innerHTML = `<div class="list-row"><span class="muted">Todavía no hay depósitos registrados.</span></div>`;
+      } else {
+        state.deposits.forEach((dep, idx) => {
+          const days = daysTo(dep.endDate);
+          const alertCls = dep.status !== 'activo' ? 'good' : days <= 10 ? 'bad' : days <= 30 ? 'warn' : 'good';
+          const row = document.createElement('div');
+          row.className = 'list-row';
+          row.innerHTML = `<div><strong>${escapeHtml(dep.name)}</strong><div class="muted">${escapeHtml(getAdultName(dep.ownerId))} · ${escapeHtml(dep.platform)} · vence ${formatDate(dep.endDate)}</div></div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <span class="amount">${formatCurrency(dep.principal)}</span>
+              <span class="muted">${dep.rate ? formatPercent(dep.rate) + ' anual' : ''}</span>
+              <button class="btn btn-danger" style="padding:8px 12px;">Eliminar</button>
+            </div>`;
+          row.querySelector('button').addEventListener('click', () => { state.deposits.splice(idx,1); renderDepositsUI(); });
+          list.appendChild(row);
+
+          if (dep.status === 'activo') {
+            const msg = days < 0 ? `El depósito ${dep.name} ya ha vencido.` : days === 0 ? `El depósito ${dep.name} vence hoy.` : `El depósito ${dep.name} vence en ${days} días.`;
+            const alert = document.createElement('div');
+            alert.className = `alert-row ${alertCls}`;
+            alert.innerHTML = `<div><strong>${escapeHtml(dep.name)}</strong><div class="muted">${escapeHtml(getAdultName(dep.ownerId))} · ${escapeHtml(dep.platform)}</div></div><div>${msg}</div>`;
+            if (days <= 30) alerts.appendChild(alert);
+          }
+        });
+      }
+    }
+
+    async function refreshHistoricalView() {
+      const all = await storageAdapter.getAll();
+      const rows = Object.entries(all)
+        .map(([period, data]) => ({ period, data, totals: calculateTotals(data), activeDeposits: countActiveDepositsForPeriod(period), paidInterest: calculateTotals(data).depositInterestIncome }))
+        .sort((a, b) => a.period.localeCompare(b.period));
+
+      renderHistoryMetrics(rows);
+      renderHistoryTable(rows);
+      renderHistoryCharts(rows);
+      renderHistoryInvestments(rows);
+      renderHistoryDeposits(rows);
+    }
+
+    function renderHistoryMetrics(rows) {
+      const income = rows.reduce((acc, row) => acc + row.totals.totalIncome, 0);
+      const expenses = rows.reduce((acc, row) => acc + row.totals.totalExpenses, 0);
+      const savings = rows.reduce((acc, row) => acc + row.totals.savings, 0);
+      const avgRate = rows.length ? rows.reduce((acc, row) => acc + row.totals.savingsRate, 0) / rows.length : 0;
+      setText('hist-total-income', formatCurrency(income));
+      setText('hist-total-expenses', formatCurrency(expenses));
+      setText('hist-total-savings', formatCurrency(savings));
+      setText('hist-average-rate', formatPercent(avgRate));
+      setText('hist-count', String(rows.length));
+    }
+
+    function renderHistoryInvestments(rows) {
+      const body = document.getElementById('history-investments-body');
+      body.innerHTML = rows.length ? rows.map(row => {
+        const txt = state.config.adults.map(a => `${a.name}: ${formatCurrency(row.totals.adultInvestmentBreakdown[a.id] || 0)}`).join(' · ');
+        return `<tr><td>${formatPeriod(row.period)}</td><td>${txt}</td></tr>`;
+      }).join('') : '<tr><td colspan="2" class="muted">No hay datos.</td></tr>';
+    }
+
+    function renderHistoryDeposits(rows) {
+      const body = document.getElementById('history-deposits-body');
+      body.innerHTML = rows.length ? rows.map(row => `
+        <tr><td>${formatPeriod(row.period)}</td><td>${formatCurrency(row.paidInterest)}</td><td>${row.activeDeposits}</td></tr>
+      `).join('') : '<tr><td colspan="3" class="muted">No hay datos.</td></tr>';
+    }
+
+    function renderHistoryTable(rows) {
+      const tbody = document.getElementById('history-table-body');
+      tbody.innerHTML = '';
+      if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="11" class="muted">No hay períodos guardados todavía.</td></tr>';
+        return;
+      }
+      rows.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${formatPeriod(row.period)}</td>
+          <td>${formatCurrency(row.totals.totalIncome)}</td>
+          <td>${formatCurrency(row.totals.commonExpenses)}</td>
+          <td>${formatCurrency(row.totals.personalExpenses)}</td>
+          <td>${formatCurrency(row.totals.dependentExpenses)}</td>
+          <td>${formatCurrency(row.totals.investments)}</td>
+          <td>${formatCurrency(row.totals.depositInterestIncome)}</td>
+          <td>${formatCurrency(row.totals.totalExpenses)}</td>
+          <td>${formatCurrency(row.totals.savings)}</td>
+          <td>${formatPercent(row.totals.savingsRate)}</td>
+          <td><button class="btn btn-soft" style="padding:8px 12px;">Abrir</button></td>
+        `;
+        tr.querySelector('button').addEventListener('click', () => {
+          const [year, month] = row.period.split('-');
+          document.getElementById('period-year').value = year;
+          document.getElementById('period-month').value = month;
+          document.querySelector('[data-tab="mensual"]').click();
+          loadSelectedPeriod();
+        });
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderHistoryCharts(rows) {
+      const labels = rows.map(row => formatPeriodShort(row.period));
+      const incomeDatasets = state.config.adults.map(adult => ({
+        label: `Ingresos ${adult.name}`,
+        data: rows.map(r => round2(r.totals.adultIncomeBreakdown[adult.id] || 0)),
+        backgroundColor: adult.color || '#2563eb'
+      }));
+      buildChart('history-income-chart', { type: 'bar', data: { labels, datasets: incomeDatasets }, options: chartOptions(true) });
+
+      buildChart('history-distribution-chart', {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            { label: 'Gastos comunes', data: rows.map(r => round2(r.totals.commonExpenses)), backgroundColor: '#f59e0b' },
+            { label: 'Gastos personales', data: rows.map(r => round2(r.totals.personalExpenses)), backgroundColor: '#60a5fa' },
+            { label: 'Dependientes', data: rows.map(r => round2(r.totals.dependentExpenses)), backgroundColor: '#f97316' },
+            { label: 'Inversiones', data: rows.map(r => round2(r.totals.investments)), backgroundColor: '#8b5cf6' },
+            { label: 'Neto ahorrado', data: rows.map(r => round2(r.totals.savings)), backgroundColor: '#22c55e' }
+          ]
+        },
+        options: chartOptions(true)
+      });
+
+      buildChart('history-savings-chart', {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            { label: 'Neto ahorrado', data: rows.map(r => round2(r.totals.savings)), backgroundColor: '#22c55e', yAxisID: 'y' },
+            { label: 'Tasa de ahorro (%)', data: rows.map(r => round2(r.totals.savingsRate)), type: 'line', borderColor: '#15325b', backgroundColor: '#15325b', yAxisID: 'y1', tension: 0.3 }
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          scales: {
+            y: { beginAtZero: true, ticks: { callback: v => formatCurrency(v, false) } },
+            y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, ticks: { callback: v => `${v}%` } }
+          },
+          plugins: { legend: { position: 'bottom' } }
+        }
+      });
+    }
+
+    function chartOptions(stacked) {
+      return {
+        responsive: true, maintainAspectRatio: false,
+        scales: { y: { stacked, beginAtZero: true, ticks: { callback: v => formatCurrency(v, false) } }, x: { stacked } },
+        plugins: { legend: { position: 'bottom' } }
+      };
+    }
+
+    function buildChart(canvasId, config) {
+      if (state.charts[canvasId]) state.charts[canvasId].destroy();
+      const ctx = document.getElementById(canvasId);
+      if (!ctx) return;
+      state.charts[canvasId] = new Chart(ctx, config);
+    }
+
+    function calculateCompound() {
+      const initial = parseFloat(document.getElementById('compound-initial').value || 0) || 0;
+      const monthly = parseFloat(document.getElementById('compound-monthly').value || 0) || 0;
+      const annualRate = parseFloat(document.getElementById('compound-rate').value || 0) || 0;
+      const years = parseInt(document.getElementById('compound-years').value || 0, 10) || 0;
+      const monthlyRate = annualRate / 100 / 12;
+      let balance = initial, invested = initial;
+      const labels = [], investedSeries = [], interestSeries = [], rows = [];
+      for (let year = 1; year <= years; year++) {
+        const startOfYear = balance;
+        for (let month = 1; month <= 12; month++) {
+          balance += monthly; invested += monthly; balance *= (1 + monthlyRate);
+        }
+        const interest = balance - invested;
+        labels.push(`Año ${year}`); investedSeries.push(round2(invested)); interestSeries.push(round2(interest));
+        rows.push({ year, startOfYear: round2(startOfYear), invested: round2(invested), interest: round2(interest), endOfYear: round2(balance) });
+      }
+      setText('compound-final', formatCurrency(balance));
+      setText('compound-invested', formatCurrency(invested));
+      setText('compound-interest', formatCurrency(balance - invested));
+      buildChart('compound-chart', { type: 'bar', data: { labels, datasets: [{ label: 'Dinero aportado', data: investedSeries, backgroundColor: '#2563eb' }, { label: 'Intereses generados', data: interestSeries, backgroundColor: '#22c55e' }] }, options: chartOptions(true) });
+      document.getElementById('compound-table-body').innerHTML = rows.map(row => `<tr><td>${row.year}</td><td>${formatCurrency(row.startOfYear)}</td><td>${formatCurrency(row.invested)}</td><td>${formatCurrency(row.interest)}</td><td>${formatCurrency(row.endOfYear)}</td></tr>`).join('');
+    }
+
+    function buildIncomeRowsForPeriod(period, data) {
+      const rows = [];
+      state.config.adults.forEach(adult => {
+        const aData = data.adults[adult.id];
+        if (!aData) return;
+        state.config.incomeSources.filter(s => s.ownerId === adult.id).forEach(src => {
+          const amount = num(aData.sourceAmounts[src.id]);
+          if (amount) rows.push({ Periodo: formatPeriod(period), Persona: adult.name, Categoria: src.name, Concepto: 'Ingreso', Importe: round2(amount) });
+        });
+        aData.otherIncome.forEach(item => rows.push({ Periodo: formatPeriod(period), Persona: adult.name, Categoria: 'Otros ingresos', Concepto: item.name, Importe: round2(item.amount) }));
+        aData.depositInterestIncome.forEach(item => rows.push({ Periodo: formatPeriod(period), Persona: adult.name, Categoria: 'Intereses depósitos', Concepto: item.name, Importe: round2(item.amount) }));
+      });
+      return rows;
+    }
+
+    function buildExpenseRowsForPeriod(period, data) {
+      const rows = [];
+      state.config.fixedExpenses.forEach(exp => {
+        const amount = num(data.common.fixed[exp.id]);
+        if (amount) rows.push({ Periodo: formatPeriod(period), Bloque: 'Común', Subcategoria: exp.name, Concepto: exp.name, Importe: round2(amount) });
+      });
+      data.common.supermarket.forEach(item => rows.push({ Periodo: formatPeriod(period), Bloque: 'Común', Subcategoria: 'Supermercado', Concepto: item.name, Importe: round2(item.amount) }));
+      data.common.other.forEach(item => rows.push({ Periodo: formatPeriod(period), Bloque: 'Común', Subcategoria: 'Otros gastos comunes', Concepto: item.name, Importe: round2(item.amount) }));
+      state.config.adults.forEach(adult => (data.adults[adult.id]?.personalExpenses || []).forEach(item => rows.push({ Periodo: formatPeriod(period), Bloque: adult.name, Subcategoria: 'Gasto personal', Concepto: item.name, Importe: round2(item.amount) })));
+      state.config.dependents.forEach(dep => (data.dependents[dep.id] || []).forEach(item => rows.push({ Periodo: formatPeriod(period), Bloque: dep.name, Subcategoria: item.category, Concepto: item.name, Importe: round2(item.amount) })));
+      return rows;
+    }
+
+    function buildInvestmentRowsForPeriod(period, data) {
+      const rows = [];
+      state.config.adults.forEach(adult => {
+        const aData = data.adults[adult.id];
+        if (!aData) return;
+        aData.investmentsMyInvestor.forEach(item => rows.push({ Periodo: formatPeriod(period), Persona: adult.name, Tipo: 'MyInvestor', Concepto: item.name, Importe: round2(item.amount) }));
+        aData.investmentsOther.forEach(item => rows.push({ Periodo: formatPeriod(period), Persona: adult.name, Tipo: 'Otras inversiones', Concepto: item.name, Importe: round2(item.amount) }));
+      });
+      return rows;
+    }
+
+    function buildDepositsRows() {
+      return state.deposits.map(dep => ({
+        Titular: getAdultName(dep.ownerId),
+        Nombre: dep.name,
+        Plataforma: dep.platform,
+        Principal: round2(dep.principal),
+        Interes_Porcentaje: round2(dep.rate),
+        Fecha_Inicio: dep.startDate,
+        Fecha_Vencimiento: dep.endDate,
+        Interes_Esperado: round2(dep.expectedInterest),
+        Interes_Cobrado: round2(dep.paidInterest),
+        Estado: dep.status
+      }));
+    }
+
+    function exportSinglePeriodExcel() {
+      if (!state.currentPeriod) return;
+      const totals = calculateTotals();
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([{
+        Periodo: formatPeriod(state.currentPeriod),
+        Ingresos_Totales: round2(totals.totalIncome),
+        Gastos_Comunes: round2(totals.commonExpenses),
+        Gastos_Personales: round2(totals.personalExpenses),
+        Gastos_Dependientes: round2(totals.dependentExpenses),
+        Inversiones: round2(totals.investments),
+        Intereses_Depositos: round2(totals.depositInterestIncome),
+        Gastos_Totales: round2(totals.totalExpenses),
+        Neto_Ahorrado: round2(totals.savings),
+        Tasa_Ahorro: round2(totals.savingsRate)
+      }]), 'Resumen');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(buildIncomeRowsForPeriod(state.currentPeriod, state.form)), 'Ingresos');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(buildExpenseRowsForPeriod(state.currentPeriod, state.form)), 'Gastos');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(buildInvestmentRowsForPeriod(state.currentPeriod, state.form)), 'Inversiones');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(buildDepositsRows()), 'Depositos');
+      XLSX.writeFile(wb, `HomeFlow_${state.currentPeriod}.xlsx`);
+    }
+
+    async function exportHistoryExcel() {
+      const all = await storageAdapter.getAll();
+      const ordered = Object.entries(all).sort((a,b) => a[0].localeCompare(b[0]));
+      if (!ordered.length) return;
+      const wb = XLSX.utils.book_new();
+      const summaryRows = ordered.map(([period, data]) => {
+        const totals = calculateTotals(data);
+        return {
+          Periodo: formatPeriod(period),
+          Ingresos_Totales: round2(totals.totalIncome),
+          Gastos_Comunes: round2(totals.commonExpenses),
+          Gastos_Personales: round2(totals.personalExpenses),
+          Gastos_Dependientes: round2(totals.dependentExpenses),
+          Inversiones: round2(totals.investments),
+          Intereses_Depositos: round2(totals.depositInterestIncome),
+          Gastos_Totales: round2(totals.totalExpenses),
+          Neto_Ahorrado: round2(totals.savings),
+          Tasa_Ahorro: round2(totals.savingsRate)
+        };
+      });
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), 'Resumen');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ordered.flatMap(([period, data]) => buildIncomeRowsForPeriod(period, data))), 'Ingresos');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ordered.flatMap(([period, data]) => buildExpenseRowsForPeriod(period, data))), 'Gastos');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ordered.flatMap(([period, data]) => buildInvestmentRowsForPeriod(period, data))), 'Inversiones');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(buildDepositsRows()), 'Depositos');
+      XLSX.writeFile(wb, 'HomeFlow_historico.xlsx');
+    }
+
+    async function exportHistoryJSON() {
+      const all = await storageAdapter.getAll();
+      const blob = new Blob([JSON.stringify({ config: state.config, periods: all, deposits: state.deposits }, null, 2)], { type: 'application/json' });
+      downloadBlob(blob, 'HomeFlow_backup.json');
+    }
+
+    function countActiveDepositsForPeriod(period) {
+      const [year, month] = period.split('-').map(Number);
+      return state.deposits.filter(dep => {
+        if (dep.status !== 'activo') return false;
+        const end = dep.endDate ? new Date(dep.endDate) : null;
+        return end && end.getFullYear() >= year && (end.getFullYear() > year || (end.getMonth()+1) >= month);
+      }).length;
+    }
+
+    function getAdultName(id) {
+      return state.config.adults.find(a => a.id === id)?.name || 'Titular';
+    }
+
+    function daysTo(dateStr) {
+      if (!dateStr) return 99999;
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      const end = new Date(dateStr);
+      end.setHours(0,0,0,0);
+      return Math.round((end - today) / (1000*60*60*24));
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return '';
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('es-ES');
+    }
+
+    function setStatus(text) {
+      document.getElementById('save-status').textContent = text;
+    }
+
+    function setAuthStatus(text) {
+      document.getElementById('auth-status').textContent = text;
+    }
+
+    function setText(id, text) {
+      document.getElementById(id).textContent = text;
+    }
+
+    function sumList(list) {
+      return (list || []).reduce((acc,item)=> acc + num(item.amount), 0);
+    }
+
+    function num(value) {
+      return parseFloat(value || 0) || 0;
+    }
+
+    function round2(value) {
+      return Math.round((num(value)+Number.EPSILON)*100)/100;
+    }
+
+    function formatCurrency(value, withSymbol = true) {
+      const formatted = new Intl.NumberFormat('es-ES', { minimumFractionDigits:2, maximumFractionDigits:2 }).format(num(value));
+      return withSymbol ? `${formatted} €` : formatted;
+    }
+
+    function formatPercent(value) {
+      return `${new Intl.NumberFormat('es-ES',{ minimumFractionDigits:1, maximumFractionDigits:1 }).format(num(value))} %`;
+    }
+
+    function formatPeriod(periodId) {
+      const [year, month] = periodId.split('-');
+      return `${monthNames[Number(month)-1]} ${year}`;
+    }
+
+    function formatPeriodShort(periodId) {
+      const [year, month] = periodId.split('-');
+      return `${monthNames[Number(month)-1].slice(0,3)} ${String(year).slice(2)}`;
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll('&','&amp;')
+        .replaceAll('<','&lt;')
+        .replaceAll('>','&gt;')
+        .replaceAll('"','&quot;')
+        .replaceAll("'",'&#039;');
+    }
+
+    function downloadBlob(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function readableAuthError(error) {
+      const code = error?.code || '';
+      if (code.includes('invalid-email')) return 'El correo no es válido.';
+      if (code.includes('missing-password')) return 'Falta la contraseña.';
+      if (code.includes('weak-password')) return 'La contraseña debe tener al menos 6 caracteres.';
+      if (code.includes('email-already-in-use')) return 'Ese correo ya está registrado.';
+      if (code.includes('invalid-credential') || code.includes('wrong-password') || code.includes('user-not-found')) return 'Correo o contraseña incorrectos.';
+      return error?.message || 'Ha ocurrido un error con Firebase.';
+    }
+
+    onAuthStateChanged(auth, async (user) => {
+      state.user = user || null;
+      updateAuthUI();
+      if (!user) {
+        state.config = defaultConfig();
+        state.deposits = [];
+        state.form = createEmptyPeriodData(state.config);
+        document.getElementById('monthly-dynamic-area').innerHTML = '';
+        return;
+      }
+      try {
+        await bootstrapFamily();
+      } catch (error) {
+        setAuthStatus(error.message || 'No se ha podido cargar HomeFlow.');
+      }
+    });
+
+    initStaticUI();
+  </script>
+
+</body>
+</html>
