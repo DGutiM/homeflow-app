@@ -1,0 +1,17 @@
+{
+  "name": "HomeFlow",
+  "short_name": "HomeFlow",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f3f7fb",
+  "theme_color": "#0f766e",
+  "description": "Control mensual del hogar con ahorro neto, tasa de ahorro, histórico y exportación a Excel.",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
