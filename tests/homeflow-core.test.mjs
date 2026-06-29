@@ -56,4 +56,10 @@ assert.deepEqual(
   ]
 );
 
+const originalPeriods = { '2026-06': { income: 1000 } };
+const updatedPeriods = core.upsertPeriodMap(originalPeriods, '2026-06', { income: 1250 });
+assert.equal(Object.keys(updatedPeriods).length, 1);
+assert.equal(updatedPeriods['2026-06'].income, 1250);
+assert.equal(originalPeriods['2026-06'].income, 1000);
+
 console.log('homeflow-core: pruebas correctas');

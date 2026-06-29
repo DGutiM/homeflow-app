@@ -387,8 +387,11 @@
       },
       async savePeriod(periodId, data) {
         const bundle = await this.getSafeBundle();
-        bundle.periods ||= {};
-        bundle.periods[periodId] = structuredClone(data);
+        bundle.periods = HomeFlowCore.upsertPeriodMap(
+          bundle.periods,
+          periodId,
+          structuredClone(data)
+        );
         await this.saveUserBundle(state.currentUser.uid, bundle);
       },
       async getPeriod(periodId) {
@@ -424,11 +427,6 @@
       return HomeFlowCore.isDepositClosed(deposit);
     }
 
-    function currentFixedIncome() {
-      if (!state.profile.fixedIncomePositions) state.profile.fixedIncomePositions = [];
-      return state.profile.fixedIncomePositions;
-    }
-
     function currentInvestmentPositions() {
       if (!Array.isArray(state.profile.investmentPositions)) {
         state.profile.investmentPositions = (state.profile.fixedIncomePositions || []).map(item => ({
@@ -451,13 +449,6 @@
     function currentHistoricalInvestmentPositions() {
       if (!Array.isArray(state.profile.investmentPositions)) state.profile.investmentPositions = [];
       return state.profile.investmentPositions;
-    }
-
-
-    function getTransferSummaryByOwner(ownerName) {
-      return currentInvestmentTransfers()
-        .filter(item => (item.owner || 'Hogar') === (ownerName || 'Hogar'))
-        .reduce((acc, item) => acc + num(item.amount), 0);
     }
 
     function getFundMonthlyInvestments(list = []) {
@@ -483,11 +474,6 @@
       });
       return { rows, total };
     }
-
-    function combineJobs(job1, job2) {
-      return [job1, job2].map(v => String(v || '').trim()).filter(Boolean).join(' + ');
-    }
-
     function populatePeriodSelectors() {
       const monthSelect = document.getElementById('period-month');
       monthSelect.innerHTML = '';
@@ -505,6 +491,21 @@
       document.querySelectorAll('[data-tab]').forEach(btn => {
         btn.addEventListener('click', () => {
           activateTab(btn.dataset.tab);
+        });
+      });
+    }
+
+    function bindAccordionBehavior(root = document) {
+      const isMobile = window.matchMedia('(max-width: 720px)').matches;
+      root.querySelectorAll('details.workspace-accordion').forEach(details => {
+        if (details.dataset.accordionBound) return;
+        details.dataset.accordionBound = 'true';
+        if (isMobile && details.hasAttribute('data-mobile-collapsed')) details.open = false;
+        details.addEventListener('toggle', () => {
+          if (!details.open) return;
+          window.requestAnimationFrame(() => {
+            Object.values(state.charts || {}).forEach(chart => chart?.resize?.());
+          });
         });
       });
     }
@@ -537,6 +538,16 @@
       document.getElementById('setup-add-child').addEventListener('click', addChildToSetupDraft);
       document.getElementById('setup-save-profile').addEventListener('click', saveSetupDraft);
       document.getElementById('close-setup-modal').addEventListener('click', closeSetupModal);
+      document.querySelectorAll('.compound-preset').forEach(button => {
+        button.addEventListener('click', () => {
+          document.getElementById('compound-rate').value = button.dataset.compoundRate;
+          document.querySelectorAll('.compound-preset').forEach(item => item.classList.toggle('active', item === button));
+          calculateCompound();
+        });
+      });
+      ['compound-initial', 'compound-monthly', 'compound-rate', 'compound-inflation', 'compound-years', 'compound-target'].forEach(id => {
+        document.getElementById(id)?.addEventListener('change', calculateCompound);
+      });
     }
 
     async function handleRegister() {
@@ -736,16 +747,6 @@
       setStatus('');
     }
 
-    function clearCurrentView() {
-      state.form = ensurePeriodStructure(createEmptyPeriodData(), state.profile);
-      state.form.meta ||= {};
-      state.form.meta.profileSnapshot = buildProfileSnapshot(state.profile);
-      renderMonthlyArea();
-      renderMonthlySummary();
-      renderPeriodContextNote();
-      setStatus('');
-    }
-
     async function saveCurrentPeriod() {
       if (!state.currentUser) return setStatus('Debes iniciar sesión antes de guardar.', true);
       if (!isProfileReady()) return setStatus('Configura primero tu familia.', true);
@@ -786,9 +787,10 @@
       const loadedContext = getLoadedFormContext();
       const fixedLabels = loadedContext.fixedExpenseLabels || state.profile.fixedExpenseLabels;
       area.innerHTML = `
-        <div class="grid grid-2">
-          <div class="card monthly-common-card">
-            <h2>Gastos comunes</h2>
+        <div class="accordion-stack">
+          <details class="workspace-accordion monthly-common-card" open data-mobile-collapsed>
+            <summary><span><strong>Gastos comunes</strong><small>Vivienda, suministros, supermercado y otros</small></span></summary>
+            <div class="accordion-body">
             <div class="field-row">
               <div><label>${escapeHtml(fixedLabels.fibra)}</label><input type="number" min="0" step="0.01" data-path="expenses.commonFixed.fibra" value="${num(state.form.expenses.commonFixed.fibra)}" /></div>
               <div><label>${escapeHtml(fixedLabels.luz)}</label><input type="number" min="0" step="0.01" data-path="expenses.commonFixed.luz" value="${num(state.form.expenses.commonFixed.luz)}" /></div>
@@ -829,10 +831,12 @@
               </div>
               <div id="list-commonOther" class="dynamic-list"></div>
             </div>
-          </div>
+            </div>
+          </details>
 
-          <div class="card monthly-invest-card">
-            <h2>Inversiones</h2>
+          <details class="workspace-accordion monthly-invest-card" open data-mobile-collapsed>
+            <summary><span><strong>Inversiones</strong><small>Aportaciones de este mes por tipo y titular</small></span></summary>
+            <div class="accordion-body">
             <div class="category-card">
               <div class="section-title"><h3>Aportaciones mensuales</h3><span class="muted">La renta variable y la renta fija alimentan su categoría correspondiente</span></div>
               <div class="field-row-4">
@@ -848,16 +852,18 @@
               <div class="section-title"><h3>Inversiones acumuladas del hogar</h3><span class="muted">Se calculan automáticamente con lo ya guardado</span></div>
               <div class="empty-box">Aquí ya no tienes que añadir posiciones acumuladas. HomeFlow suma automáticamente las aportaciones mensuales guardadas en su categoría y los depósitos activos en la pestaña Inversiones.</div>
             </div>
-          </div>
+            </div>
+          </details>
         </div>
 
-        <div class="grid grid-${Math.min(Math.max(getLoadedAdults().length + getLoadedChildren().length, 1), 3)}" style="margin-top:18px;" id="person-cards-row"></div>
+        <div class="accordion-stack" style="margin-top:14px;" id="person-cards-row"></div>
       `;
 
       bindMonthlyFieldInputs();
       bindDynamicMonthlyButtons();
       renderCommonLists();
       renderPersonCards();
+      bindAccordionBehavior(area);
     }
 
     function bindMonthlyFieldInputs() {
@@ -940,8 +946,10 @@
 
       getLoadedAdults().forEach(adult => {
         const archivedAdult = isArchivedMember(adult.id, 'adult');
-        const card = document.createElement('div');
-        card.className = 'card person-card';
+        const card = document.createElement('details');
+        card.className = 'workspace-accordion person-card';
+        card.setAttribute('data-mobile-collapsed', '');
+        card.open = true;
         const incomeBlock = state.form.incomes.adults[adult.id] || { mainFixed: 0, mainLabel: adult.mainIncomeLabel || 'Ingreso principal', recurring: {}, other: [] };
         const activeRecurring = adult.extraIncomeLabels || [];
         const archivedRecurring = Object.entries(incomeBlock.recurring || {})
@@ -954,13 +962,13 @@
           + sumList(incomeBlock.other || []);
 
         card.innerHTML = `
-          <div class="person-card-header">
-            <div>
-              <h2 class="person-card-title">${escapeHtml(adult.name)}${archivedAdult ? ' <span class="badge warn">Histórico</span>' : ''}</h2>
-              <div class="muted">Balance rápido · Ingresos ${formatCurrency(totalAdultIncome)} · Gastos personales ${formatCurrency(personalExpenseTotal)}</div>
-            </div>
-          </div>
-
+          <summary>
+            <span>
+              <strong>${escapeHtml(adult.name)}${archivedAdult ? ' · Histórico' : ''}</strong>
+              <small>Ingresos ${formatCurrency(totalAdultIncome)} · Gastos ${formatCurrency(personalExpenseTotal)}</small>
+            </span>
+          </summary>
+          <div class="accordion-body">
           <div class="person-sections">
             <section class="person-section income-section">
               <div class="person-section-title">
@@ -1026,21 +1034,25 @@
               </div>
             </section>
           </div>
+          </div>
         `;
         row.appendChild(card);
       });
 
       getLoadedChildren().forEach(child => {
         const archivedChild = isArchivedMember(child.id, 'child');
-        const card = document.createElement('div');
-        card.className = 'card person-card';
+        const card = document.createElement('details');
+        card.className = 'workspace-accordion person-card';
+        card.setAttribute('data-mobile-collapsed', '');
+        card.open = true;
         card.innerHTML = `
-          <div class="person-card-header">
-            <div>
-              <h2 class="person-card-title">${escapeHtml(child.name)}${archivedChild ? ' <span class="badge warn">Histórico</span>' : ''}</h2>
-              <div class="muted">${escapeHtml(child.note || 'Dependiente')}</div>
-            </div>
-          </div>
+          <summary>
+            <span>
+              <strong>${escapeHtml(child.name)}${archivedChild ? ' · Histórico' : ''}</strong>
+              <small>${escapeHtml(child.note || 'Dependiente')} · Gastos ${formatCurrency(sumList(state.form.expenses.children[child.id] || []))}</small>
+            </span>
+          </summary>
+          <div class="accordion-body">
           <section class="person-section children-section">
             <div class="person-section-title">
               <span>Gastos del dependiente</span>
@@ -1076,11 +1088,13 @@
               <div id="child-expense-list-${child.id}" class="dynamic-list"></div>
             </div>
           </section>
+          </div>
         `;
         row.appendChild(card);
       });
 
       bindPersonCards();
+      bindAccordionBehavior(row);
     }
 
     function bindPersonCards() {
@@ -1187,35 +1201,6 @@
         container.appendChild(row);
       });
     }
-
-    function addFixedIncomePosition() {
-      const name = document.getElementById('fixed-income-name').value.trim();
-      const entity = document.getElementById('fixed-income-entity').value.trim();
-      const owner = document.getElementById('fixed-income-owner').value;
-      const amount = parseFloat(document.getElementById('fixed-income-amount').value || 0);
-      if (!name || !entity || !amount) return;
-      currentInvestmentPositions().push({ id: createId('inv'), name, type: 'Renta fija', owner, platform: entity, amount });
-      document.getElementById('fixed-income-name').value = '';
-      document.getElementById('fixed-income-entity').value = '';
-      document.getElementById('fixed-income-amount').value = '';
-      storageAdapter.saveProfile(state.profile);
-      renderFixedIncomeList();
-      renderInvestmentsTab();
-      renderMonthlySummary();
-      refreshHistoricalView();
-    }
-
-    function renderFixedIncomeList() {
-      renderSimpleDynamicList('list-fixed-income', currentInvestmentPositions(), item => `${item.name} · ${(item.platform || item.entity || 'Sin entidad')} · ${item.owner} · ${item.type || 'Inversión'}`, index => {
-        currentInvestmentPositions().splice(index, 1);
-        storageAdapter.saveProfile(state.profile);
-        renderFixedIncomeList();
-        renderInvestmentsTab();
-        renderMonthlySummary();
-        refreshHistoricalView();
-      });
-    }
-
 
     function calculateHousingSummary(profile = state.profile, periodsMap = null) {
       const housing = profile?.housing || createEmptyProfile().housing;
@@ -1424,9 +1409,12 @@ function calculateTotals(profile = state.profile, form = state.form) {
 
     function renderHistoryTable(rows) {
       const tbody = document.getElementById('history-table-body');
+      const mobileList = document.getElementById('history-mobile-list');
       tbody.innerHTML = '';
+      if (mobileList) mobileList.innerHTML = '';
       if (!rows.length) {
         tbody.innerHTML = '<tr><td colspan="11" class="muted">No hay períodos guardados todavía.</td></tr>';
+        if (mobileList) mobileList.innerHTML = '<div class="empty-box">No hay períodos guardados todavía.</div>';
         return;
       }
       let cumulativeSavings = 0;
@@ -1447,14 +1435,33 @@ function calculateTotals(profile = state.profile, form = state.form) {
           <td><button class="btn btn-soft btn-inline" data-open-period="${row.period}">Abrir</button></td>
         `;
         tbody.appendChild(tr);
+        if (mobileList) {
+          const card = document.createElement('article');
+          card.className = 'history-month-card';
+          card.innerHTML = `
+            <div class="history-month-card-header">
+              <h3>${formatPeriod(row.period)}</h3>
+              <span class="badge ${row.totals.savings >= 0 ? 'good' : 'warn'}">${formatPercent(row.totals.savingsRate)}</span>
+            </div>
+            <div class="history-month-grid">
+              <div class="history-month-stat"><span>Ingresos</span><strong>${formatCurrency(row.totals.totalIncome)}</strong></div>
+              <div class="history-month-stat"><span>Gastos</span><strong>${formatCurrency(row.totals.totalExpenses)}</strong></div>
+              <div class="history-month-stat"><span>Ahorro</span><strong>${formatCurrency(row.totals.savings)}</strong></div>
+              <div class="history-month-stat"><span>Inversión variable</span><strong>${formatCurrency(row.totals.investments)}</strong></div>
+            </div>
+            <button type="button" class="btn btn-soft" data-open-period="${row.period}">Abrir y editar este mes</button>
+          `;
+          mobileList.appendChild(card);
+        }
       });
-      tbody.querySelectorAll('[data-open-period]').forEach(btn => {
+      document.querySelectorAll('[data-open-period]').forEach(btn => {
         btn.addEventListener('click', async () => {
           const [year, month] = btn.dataset.openPeriod.split('-');
           document.getElementById('period-year').value = year;
           document.getElementById('period-month').value = month;
-          document.querySelector('[data-tab="mensual"]').click();
+          activateTab('mensual');
           await loadSelectedPeriod();
+          window.scrollTo({ top: 0, behavior: 'smooth' });
         });
       });
     }
@@ -1688,13 +1695,17 @@ function calculateTotals(profile = state.profile, form = state.form) {
       const initial = parseFloat(document.getElementById('compound-initial').value || 0) || 0;
       const monthly = parseFloat(document.getElementById('compound-monthly').value || 0) || 0;
       const annualRate = parseFloat(document.getElementById('compound-rate').value || 0) || 0;
+      const inflation = parseFloat(document.getElementById('compound-inflation').value || 0) || 0;
       const years = parseInt(document.getElementById('compound-years').value || 0, 10) || 0;
+      const target = parseFloat(document.getElementById('compound-target').value || 0) || 0;
       const monthlyRate = annualRate / 100 / 12;
       let balance = initial;
       let invested = initial;
+      let targetYear = target > 0 && initial >= target ? 0 : null;
       const labels = [];
       const investedSeries = [];
       const interestSeries = [];
+      const realSeries = [];
       const rows = [];
       for (let year = 1; year <= years; year++) {
         const startOfYear = balance;
@@ -1704,21 +1715,59 @@ function calculateTotals(profile = state.profile, form = state.form) {
           balance *= (1 + monthlyRate);
         }
         const interest = balance - invested;
+        const realValue = balance / Math.pow(1 + inflation / 100, year);
+        if (targetYear === null && target > 0 && balance >= target) targetYear = year;
         labels.push(`Año ${year}`);
         investedSeries.push(round2(invested));
         interestSeries.push(round2(interest));
-        rows.push({ year, startOfYear: round2(startOfYear), invested: round2(invested), interest: round2(interest), endOfYear: round2(balance) });
+        realSeries.push(round2(realValue));
+        rows.push({
+          year,
+          startOfYear: round2(startOfYear),
+          invested: round2(invested),
+          interest: round2(interest),
+          endOfYear: round2(balance),
+          realValue: round2(realValue)
+        });
       }
+      const finalRealValue = years ? balance / Math.pow(1 + inflation / 100, years) : balance;
       setText('compound-final', formatCurrency(balance));
       setText('compound-invested', formatCurrency(invested));
       setText('compound-interest', formatCurrency(balance - invested));
+      setText('compound-real', formatCurrency(finalRealValue));
+      setText('compound-target-status', target <= 0 ? 'Sin objetivo' : targetYear === null ? 'Fuera del plazo' : targetYear === 0 ? 'Ya alcanzado' : `Año ${targetYear}`);
+      document.querySelectorAll('.compound-preset').forEach(button => {
+        button.classList.toggle('active', Number(button.dataset.compoundRate) === annualRate);
+      });
+      const interestShare = balance > 0 ? ((balance - invested) / balance) * 100 : 0;
+      const targetMessage = target <= 0
+        ? 'Añade un objetivo para saber en qué año podrías alcanzarlo.'
+        : targetYear === null
+          ? `El objetivo de ${formatCurrency(target)} no se alcanza en ${years} años con este escenario.`
+          : targetYear === 0
+            ? `El capital inicial ya supera el objetivo de ${formatCurrency(target)}.`
+            : `El objetivo de ${formatCurrency(target)} se alcanzaría aproximadamente en el año ${targetYear}.`;
+      const insight = document.getElementById('compound-insight');
+      if (insight) {
+        insight.innerHTML = `<strong>${targetMessage}</strong><br>Al final, los intereses representarían ${formatPercent(interestShare)} del capital. Con una inflación del ${formatPercent(inflation)}, su poder adquisitivo estimado sería ${formatCurrency(finalRealValue)}.`;
+      }
       buildChart('compound-chart', {
         type: 'bar',
         data: {
           labels,
           datasets: [
             { label: 'Dinero aportado', data: investedSeries, backgroundColor: '#2563eb' },
-            { label: 'Intereses generados', data: interestSeries, backgroundColor: '#22c55e' }
+            { label: 'Intereses generados', data: interestSeries, backgroundColor: '#22c55e' },
+            {
+              type: 'line',
+              label: 'Valor real con inflación',
+              data: realSeries,
+              borderColor: '#f59e0b',
+              backgroundColor: '#f59e0b',
+              borderWidth: 3,
+              pointRadius: 2,
+              tension: 0.25
+            }
           ]
         },
         options: chartOptions('y', true)
@@ -1730,6 +1779,7 @@ function calculateTotals(profile = state.profile, form = state.form) {
           <td>${formatCurrency(row.invested)}</td>
           <td>${formatCurrency(row.interest)}</td>
           <td>${formatCurrency(row.endOfYear)}</td>
+          <td>${formatCurrency(row.realValue)}</td>
         </tr>
       `).join('');
     }
@@ -1829,31 +1879,6 @@ function calculateTotals(profile = state.profile, form = state.form) {
       el.textContent = message;
     }
 
-
-    async function addManualInvestment() {
-      const name = document.getElementById('manual-investment-name').value.trim();
-      const type = document.getElementById('manual-investment-type').value;
-      const owner = document.getElementById('manual-investment-owner').value;
-      const platform = document.getElementById('manual-investment-platform').value.trim();
-      const amount = parseFloat(document.getElementById('manual-investment-amount').value || 0);
-      if (!name || !amount) return setManualInvestmentStatus('Completa al menos nombre e importe.', true);
-      currentInvestmentPositions().push({ id: createId('inv'), name, type, owner, platform, amount });
-      ['manual-investment-name','manual-investment-platform','manual-investment-amount'].forEach(id => document.getElementById(id).value = '');
-      document.getElementById('manual-investment-type').value = 'Fondo';
-      document.getElementById('manual-investment-owner').value = 'Hogar';
-      await storageAdapter.saveProfile(state.profile);
-      setManualInvestmentStatus('Inversión añadida.');
-      renderInvestmentsTab();
-      renderMonthlySummary();
-      refreshHistoricalView();
-    }
-
-    function setManualInvestmentStatus(message, isError = false) {
-      const el = document.getElementById('manual-investment-status');
-      if (!el) return;
-      el.style.color = isError ? 'var(--bad)' : 'var(--good)';
-      el.textContent = message;
-    }
 
 async function addHistoricalInvestment() {
       const name = document.getElementById('historical-investment-name')?.value.trim();
@@ -2127,17 +2152,20 @@ async function addHistoricalInvestment() {
     function getVisibleMovementItems(items, listKey, limit = 3) {
       window.homeflowExpandedLists ||= {};
       const expanded = !!window.homeflowExpandedLists[listKey];
-      if (expanded || items.length <= limit) {
-        return { items, expanded, hiddenCount: 0 };
-      }
-      return { items: items.slice(0, limit), expanded, hiddenCount: items.length - limit };
+      const hiddenCount = Math.max(0, items.length - limit);
+      return {
+        items: expanded ? items : items.slice(0, limit),
+        expanded,
+        hiddenCount
+      };
     }
 
     function renderMovementToggle(container, listKey, hiddenCount) {
-      if (!container || hiddenCount <= 0 && !window.homeflowExpandedLists?.[listKey]) return;
+      if (!container || hiddenCount <= 0) return;
       const row = document.createElement('div');
       row.className = 'compact-toggle-row';
       const btn = document.createElement('button');
+      btn.type = 'button';
       btn.className = 'btn btn-secondary btn-inline';
       const expanded = !!window.homeflowExpandedLists?.[listKey];
       btn.textContent = expanded ? 'Mostrar menos' : `Ver ${hiddenCount} más`;
@@ -2624,7 +2652,7 @@ async function addHistoricalInvestment() {
     }
 
     function updateOwnerSelectOptions() {
-      ['deposit-owner', 'invest-owner', 'fixed-income-owner', 'manual-investment-owner', 'historical-investment-owner'].forEach(id => {
+      ['deposit-owner', 'invest-owner', 'historical-investment-owner'].forEach(id => {
         const select = document.getElementById(id);
         if (!select) return;
         const current = select.value || 'Hogar';
@@ -2652,6 +2680,10 @@ async function addHistoricalInvestment() {
       if (targetTab === 'interes') calculateCompound();
       if (targetTab === 'inversiones') renderInvestmentsTab();
       if (targetTab === 'configuracion') renderProfileConfig();
+      bindAccordionBehavior(document.getElementById(`tab-${targetTab}`) || document);
+      window.requestAnimationFrame(() => {
+        Object.values(state.charts || {}).forEach(chart => chart?.resize?.());
+      });
     }
 
     function buildProfilePayloadFromConfiguration() {
@@ -2748,13 +2780,6 @@ async function addHistoricalInvestment() {
       if (source === 'setup' && setupStatus) setupStatus.textContent = 'Familia guardada correctamente.';
       if (source === 'config' && profileStatus) profileStatus.textContent = 'Configuración guardada correctamente.';
       setStatus('Configuración guardada. Ya puedes rellenar tu mes.');
-    }
-
-    async function applyAndPersistProfile(profilePayload, options = {}) {
-      await finishFamilySetup(profilePayload, {
-        closeSetup: options.closeSetup !== false,
-        source: options.closeSetup === false ? 'config' : 'setup'
-      });
     }
 
     async function saveProfileFromConfiguration() {
@@ -2881,28 +2906,6 @@ async function addHistoricalInvestment() {
         const msg = error?.message ? `No se pudo guardar la familia: ${error.message}` : 'No se pudo guardar la familia.';
         document.getElementById('setup-status').textContent = msg;
       }
-    }
-
-    function exportSinglePeriodExcel() {
-      if (!state.currentPeriod) return;
-      const totals = calculateTotals();
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([{
-        Periodo: formatPeriod(state.currentPeriod),
-        Ingresos_Totales: round2(totals.totalIncome),
-        Gastos_Comunes: round2(totals.commonExpenses),
-        Gastos_Personales: round2(totals.personalExpenses),
-        Gastos_Hijos: round2(totals.dependentExpenses),
-        Fondos_Mes: round2(totals.investments),
-        Gastos_Totales: round2(totals.totalExpenses),
-        Neto_Ahorrado: round2(totals.savings),
-        Tasa_Ahorro: round2(totals.savingsRate),
-        Renta_Fija_Acumulada: round2(totals.fixedIncomeTotal)
-      }]), 'Resumen');
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(buildIncomeRowsForPeriod(state.currentPeriod, state.form)), 'Ingresos');
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(buildExpenseRowsForPeriod(state.currentPeriod, state.form)), 'Gastos');
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(buildInvestmentRowsForPeriod(state.currentPeriod, state.form)), 'Inversiones');
-      XLSX.writeFile(wb, `HomeFlow3_${state.currentPeriod}.xlsx`);
     }
 
     async function exportHistoryExcel() {
@@ -3115,21 +3118,11 @@ async function addHistoricalInvestment() {
         .replaceAll("'", '&#039;');
     }
 
-    function downloadBlob(blob, filename) {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    }
-
     function init() {
       populatePeriodSelectors();
       bindTabs();
       bindActions();
+      bindAccordionBehavior();
       calculateCompound();
       authAdapter.init();
     }
