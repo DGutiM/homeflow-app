@@ -146,129 +146,164 @@
           </div>
         </div>
 
-        <div class="card monthly-summary-card" style="margin-top:18px;">
-          <div class="section-title">
-            <div>
-              <h2>Resumen del mes</h2>
-              <p class="subtle">Los cálculos se actualizan automáticamente.</p>
+        <details class="workspace-accordion monthly-summary-card" open>
+          <summary>
+            <span><strong>Resumen del mes</strong><small>Los cálculos se actualizan automáticamente</small></span>
+          </summary>
+          <div class="accordion-body">
+            <div class="kpi-grid">
+              <div class="kpi info"><div class="kpi-label">Ingresos hogar</div><div class="kpi-value" id="kpi-income">0 €</div></div>
+              <div class="kpi"><div class="kpi-label">Gastos hogar</div><div class="kpi-value" id="kpi-expenses">0 €</div></div>
+              <div class="kpi positive"><div class="kpi-label">Neto ahorrado</div><div class="kpi-value" id="kpi-savings">0 €</div></div>
+              <div class="kpi info"><div class="kpi-label">Tasa de ahorro</div><div class="kpi-value" id="kpi-rate">0 %</div></div>
+              <div class="kpi"><div class="kpi-label">Renta variable del mes</div><div class="kpi-value" id="kpi-investments">0 €</div></div>
+              <div class="kpi info"><div class="kpi-label">Renta fija acumulada</div><div class="kpi-value" id="kpi-fixed-income">0 €</div></div>
             </div>
           </div>
-          <div class="kpi-grid">
-            <div class="kpi info"><div class="kpi-label">Ingresos hogar</div><div class="kpi-value" id="kpi-income">0 €</div></div>
-            <div class="kpi"><div class="kpi-label">Gastos hogar</div><div class="kpi-value" id="kpi-expenses">0 €</div></div>
-            <div class="kpi positive"><div class="kpi-label">Neto ahorrado</div><div class="kpi-value" id="kpi-savings">0 €</div></div>
-            <div class="kpi info"><div class="kpi-label">Tasa de ahorro</div><div class="kpi-value" id="kpi-rate">0 %</div></div>
-            <div class="kpi"><div class="kpi-label">Renta variable del mes</div><div class="kpi-value" id="kpi-investments">0 €</div></div>
-            <div class="kpi info"><div class="kpi-label">Renta fija acumulada</div><div class="kpi-value" id="kpi-fixed-income">0 €</div></div>
-          </div>
-        </div>
+        </details>
 
         <div id="monthly-dynamic-area" style="margin-top:18px;"></div>
 
-        <div class="card monthly-totals-card" style="margin-top:18px;">
-          <div class="section-title">
-            <div>
-              <h2>Totales por bloque</h2>
-              <p class="subtle">Lectura rápida del reparto del dinero del mes.</p>
+        <details class="workspace-accordion monthly-totals-card" data-mobile-collapsed>
+          <summary>
+            <span><strong>Totales</strong><small>Ingresos, gastos y balance del período</small></span>
+          </summary>
+          <div class="accordion-body">
+            <div class="grid grid-3">
+              <div class="totals-list" id="totals-income-box"></div>
+              <div class="totals-list" id="totals-expenses-box"></div>
+              <div class="totals-list" id="totals-balance-box"></div>
             </div>
           </div>
-          <div class="grid grid-3">
-            <div class="totals-list" id="totals-income-box"></div>
-            <div class="totals-list" id="totals-expenses-box"></div>
-            <div class="totals-list" id="totals-balance-box"></div>
-          </div>
-          <div class="actions">
-            <button class="btn btn-secondary" id="save-period">Guardar</button>
-            
-          </div>
+        </details>
+        <div class="mobile-save-dock">
+          <button class="btn btn-primary" id="save-period">Guardar período</button>
         </div>
       </section>
 
       <section id="tab-historico" class="tab-panel">
-        <div class="card">
-          <div class="section-title">
-            <div>
-              <h2>Histórico</h2>
-              <p class="subtle">Resumen mensual, comparativa y exportación.</p>
-            </div>
-            <div class="actions" style="margin-top:0;">
-              <button class="btn btn-secondary" id="export-history">Descargar Excel histórico</button>
-              <button class="btn btn-soft" id="export-pdf">Descargar PDF histórico</button>
-            </div>
+        <div class="page-intro">
+          <div>
+            <span class="eyebrow">Evolución familiar</span>
+            <h2>Histórico</h2>
+            <p>Primero la lectura rápida; abre solo el detalle que necesites.</p>
           </div>
-          <div class="kpi-grid">
-            <div class="kpi info"><div class="kpi-label">Ingreso total histórico</div><div class="kpi-value" id="hist-total-income">0 €</div></div>
-            <div class="kpi"><div class="kpi-label">Gasto total histórico</div><div class="kpi-value" id="hist-total-expenses">0 €</div></div>
-            <div class="kpi positive"><div class="kpi-label">Neto ahorrado acumulado</div><div class="kpi-value" id="hist-total-savings">0 €</div></div>
-            <div class="kpi info"><div class="kpi-label">Tasa media de ahorro</div><div class="kpi-value" id="hist-average-rate">0 %</div></div>
-            <div class="kpi"><div class="kpi-label">Meses guardados</div><div class="kpi-value" id="hist-count">0</div></div>
+          <div class="actions">
+            <button class="btn btn-secondary" id="export-history">Excel</button>
+            <button class="btn btn-soft" id="export-pdf">PDF</button>
           </div>
         </div>
 
-        <div class="grid grid-3" style="margin-top:18px;">
-          <div class="card chart-card"><h3>Ingresos por mes</h3><canvas id="history-income-chart"></canvas></div>
-          <div class="card chart-card"><h3>Reparto del dinero por mes</h3><canvas id="history-distribution-chart"></canvas></div>
-          <div class="card chart-card"><h3>Neto ahorrado mensual y acumulado</h3><canvas id="history-savings-chart"></canvas></div>
-        </div>
-
-        <div class="card chart-card" style="margin-top:18px;">
-          <div class="section-title">
-            <div>
-              <h2>Ingresos por pagador</h2>
-              <p class="subtle">Desglose mensual de lo que cobra cada adulto por hospital, CEU, privada u otros pagadores.</p>
-            </div>
-            <div style="min-width:240px;">
-              <label for="history-income-owner-select">Persona</label>
-              <select id="history-income-owner-select"><option value="household">Hogar</option></select>
+        <details class="workspace-accordion" open>
+          <summary>
+            <span><strong>Resumen histórico</strong><small>Totales y media de ahorro</small></span>
+          </summary>
+          <div class="accordion-body">
+            <div class="kpi-grid history-kpi-grid">
+              <div class="kpi info"><div class="kpi-label">Ingresos</div><div class="kpi-value" id="hist-total-income">0 €</div></div>
+              <div class="kpi"><div class="kpi-label">Gastos</div><div class="kpi-value" id="hist-total-expenses">0 €</div></div>
+              <div class="kpi positive"><div class="kpi-label">Ahorro acumulado</div><div class="kpi-value" id="hist-total-savings">0 €</div></div>
+              <div class="kpi info"><div class="kpi-label">Tasa media</div><div class="kpi-value" id="hist-average-rate">0 %</div></div>
+              <div class="kpi"><div class="kpi-label">Meses</div><div class="kpi-value" id="hist-count">0</div></div>
             </div>
           </div>
-          <canvas id="history-income-breakdown-chart"></canvas>
-          <div class="table-wrap" style="margin-top:18px;">
-            <table>
-              <thead id="history-income-breakdown-head"></thead>
-              <tbody id="history-income-breakdown-body"></tbody>
-            </table>
-          </div>
-        </div>
+        </details>
 
-        <div class="card" style="margin-top:18px;">
-          <h2>Resumen mensual</h2>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Período</th>
-                  <th>Ingresos</th>
-                  <th>Gastos comunes</th>
-                  <th>Gastos personales</th>
-                  <th>Gastos hijos</th>
-                  <th>Renta variable mes</th>
-                  <th>Gastos totales</th>
-                  <th>Neto ahorrado</th>
-                  <th>Neto ahorrado acumulado</th>
-                  <th>Tasa ahorro</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody id="history-table-body"></tbody>
-            </table>
+        <details class="workspace-accordion" open data-mobile-collapsed>
+          <summary>
+            <span><strong>Evolución por mes</strong><small>Ingresos, reparto y ahorro</small></span>
+          </summary>
+          <div class="accordion-body">
+            <div class="grid grid-3">
+              <div class="chart-card"><h3>Ingresos</h3><canvas id="history-income-chart"></canvas></div>
+              <div class="chart-card"><h3>Reparto mensual</h3><canvas id="history-distribution-chart"></canvas></div>
+              <div class="chart-card"><h3>Ahorro</h3><canvas id="history-savings-chart"></canvas></div>
+            </div>
           </div>
-        </div>
+        </details>
 
-        <div class="card" style="margin-top:18px;">
-          <h2>Histórico de inversiones del mes</h2>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>Período</th><th>Detalle</th></tr></thead>
-              <tbody id="history-investments-body"></tbody>
-            </table>
+        <details class="workspace-accordion" data-mobile-collapsed>
+          <summary>
+            <span><strong>Ingresos por pagador</strong><small>Hospital, CEU, privada y otros</small></span>
+          </summary>
+          <div class="accordion-body">
+            <div class="section-title">
+              <p class="subtle">Compara de dónde procede lo que cobra cada adulto.</p>
+              <div style="min-width:240px;">
+                <label for="history-income-owner-select">Persona</label>
+                <select id="history-income-owner-select"><option value="household">Hogar</option></select>
+              </div>
+            </div>
+            <div class="chart-card"><canvas id="history-income-breakdown-chart"></canvas></div>
+            <div class="table-wrap" style="margin-top:18px;">
+              <table>
+                <thead id="history-income-breakdown-head"></thead>
+                <tbody id="history-income-breakdown-body"></tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        </details>
+
+        <details class="workspace-accordion" open>
+          <summary>
+            <span><strong>Meses guardados</strong><small>Abre un mes para corregirlo sin duplicarlo</small></span>
+          </summary>
+          <div class="accordion-body">
+            <div id="history-mobile-list" class="history-mobile-list"></div>
+            <div class="table-wrap history-desktop-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Período</th>
+                    <th>Ingresos</th>
+                    <th>Gastos comunes</th>
+                    <th>Gastos personales</th>
+                    <th>Gastos hijos</th>
+                    <th>Renta variable mes</th>
+                    <th>Gastos totales</th>
+                    <th>Neto ahorrado</th>
+                    <th>Neto acumulado</th>
+                    <th>Tasa ahorro</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="history-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+
+        <details class="workspace-accordion" data-mobile-collapsed>
+          <summary>
+            <span><strong>Inversiones por mes</strong><small>Detalle histórico de aportaciones</small></span>
+          </summary>
+          <div class="accordion-body">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Período</th><th>Detalle</th></tr></thead>
+                <tbody id="history-investments-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </details>
       </section>
 
       
       <section id="tab-inversiones" class="tab-panel">
-        <div class="card">
+        <div class="page-intro">
+          <div>
+            <span class="eyebrow">Patrimonio</span>
+            <h2>Inversiones</h2>
+            <p>Consulta el total y abre cada bloque solo cuando quieras actualizarlo.</p>
+          </div>
+        </div>
+
+        <details class="workspace-accordion" open>
+          <summary>
+            <span><strong>Resumen global</strong><small>Renta variable, fija, depósitos y vivienda</small></span>
+          </summary>
+          <div class="accordion-body">
+        <div class="card accordion-inner-card">
           <h2>Resumen global de inversiones</h2>
           <p class="subtle">Primero ves el total del hogar y después el desglose por persona.</p>
           <div class="kpi-grid" style="grid-template-columns: repeat(5, minmax(0,1fr));">
@@ -279,8 +314,15 @@
             <div class="kpi positive"><div class="kpi-label">Total</div><div class="kpi-value" id="investments-total-all">0 €</div></div>
           </div>
         </div>
+          </div>
+        </details>
 
-        <div class="card chart-card chart-highlight" style="margin-top:18px;">
+        <details class="workspace-accordion" data-mobile-collapsed>
+          <summary>
+            <span><strong>Reparto de inversiones</strong><small>Distribución visual del patrimonio</small></span>
+          </summary>
+          <div class="accordion-body">
+        <div class="card accordion-inner-card chart-card chart-highlight">
           <h2>Reparto de inversiones</h2>
           <p class="subtle">Vista rápida del peso de renta variable, renta fija, depósitos y vivienda pagada.</p>
           <div class="chart-with-legend">
@@ -288,9 +330,16 @@
             <div id="investments-distribution-legend" class="chart-legend-box"></div>
           </div>
         </div>
+          </div>
+        </details>
 
 
-        <div class="card" style="margin-top:18px;">
+        <details class="workspace-accordion" data-mobile-collapsed>
+          <summary>
+            <span><strong>Inversiones ya existentes</strong><small>Añadir o corregir posiciones previas</small></span>
+          </summary>
+          <div class="accordion-body">
+        <div class="card accordion-inner-card">
           <div class="section-title">
             <div>
               <h2>Inversiones ya existentes</h2>
@@ -327,8 +376,15 @@
             <div id="historical-investment-list" class="dynamic-list"></div>
           </div>
         </div>
+          </div>
+        </details>
 
-<div class="card housing-card" style="margin-top:18px;">
+        <details class="workspace-accordion" data-mobile-collapsed>
+          <summary>
+            <span><strong>Vivienda</strong><small>Precio, entrada y pagos acumulados</small></span>
+          </summary>
+          <div class="accordion-body">
+<div class="card accordion-inner-card housing-card">
           <div class="section-title">
             <div>
               <h2>Vivienda</h2>
@@ -381,8 +437,15 @@
           </div>
           <div class="footer-note" id="housing-progress-note">La entrada, los pagos extraordinarios y lo que metas en hipoteca desde la calculadora mensual se suman al progreso.</div>
         </div>
+          </div>
+        </details>
 
-        <div class="card deposit-card" style="margin-top:18px;">
+        <details class="workspace-accordion" data-mobile-collapsed>
+          <summary>
+            <span><strong>Nuevo depósito</strong><small>Alta y cálculo automático de vencimiento</small></span>
+          </summary>
+          <div class="accordion-body">
+        <div class="card accordion-inner-card deposit-card">
           <h2>Nuevo depósito</h2>
           <p class="subtle">Introduce la fecha de inicio y el número de meses. La fecha de vencimiento se calcula sola y se mostrarán alertas cuando quede poco para vencer.</p>
           <div class="grid grid-2">
@@ -420,15 +483,29 @@
           </div>
           <div class="status" id="deposit-status"></div>
         </div>
+          </div>
+        </details>
 
-        <div class="card owner-breakdown-card" style="margin-top:18px;">
+        <details class="workspace-accordion" data-mobile-collapsed>
+          <summary>
+            <span><strong>Desglose por titular</strong><small>Diego, Itxaso, hogar y otros titulares</small></span>
+          </summary>
+          <div class="accordion-body">
+        <div class="card accordion-inner-card owner-breakdown-card">
           <h2>Desglose por titular</h2>
           <p class="subtle">Cada titular muestra renta fija, renta variable, depósitos, bajas de renta fija y total invertido.</p>
           <div id="investments-by-owner" class="grid"></div>
         </div>
+          </div>
+        </details>
 
-        <div class="grid grid-2" style="margin-top:18px;">
-          <div class="card">
+        <details class="workspace-accordion" data-mobile-collapsed>
+          <summary>
+            <span><strong>Movimientos y depósitos activos</strong><small>Aportaciones mensuales y vencimientos</small></span>
+          </summary>
+          <div class="accordion-body">
+        <div class="grid grid-2">
+          <div class="card movement-card">
             <h2>Renta variable y renta fija desde la calculadora</h2>
             <div id="aggregated-monthly-investment-list" class="dynamic-list"></div>
           </div>
@@ -438,7 +515,14 @@
             <div id="deposit-list" class="dynamic-list"></div>
           </div>
         </div>
-        <div class="card" style="margin-top:18px;">
+          </div>
+        </details>
+        <details class="workspace-accordion" data-mobile-collapsed>
+          <summary>
+            <span><strong>Intereses de depósitos por año</strong><small>Solo intereses de depósitos ya cobrados</small></span>
+          </summary>
+          <div class="accordion-body">
+        <div class="card accordion-inner-card">
           <div class="section-title">
             <div>
               <h2>Intereses de depósitos por año</h2>
@@ -447,72 +531,101 @@
           </div>
           <div id="deposit-interest-year-list" class="dynamic-list"></div>
         </div>
+          </div>
+        </details>
       </section>
 
 
       <section id="tab-interes" class="tab-panel">
-        <div class="grid grid-2">
-          <div class="card">
-            <h2>Calculadora de interés compuesto</h2>
-            <p class="subtle">Proyección anual con barras separando capital aportado e intereses.</p>
-            <div class="grid grid-2">
-              <div>
-                <label for="compound-initial">Dinero inicial</label>
-                <input id="compound-initial" type="number" min="0" step="0.01" value="10000" />
-              </div>
-              <div>
-                <label for="compound-monthly">Aportación mensual</label>
-                <input id="compound-monthly" type="number" min="0" step="0.01" value="300" />
-              </div>
-              <div>
-                <label for="compound-rate">Rentabilidad anual estimada (%)</label>
-                <input id="compound-rate" type="number" min="0" step="0.01" value="7" />
-              </div>
-              <div>
-                <label for="compound-years">Años</label>
-                <input id="compound-years" type="number" min="1" step="1" value="20" />
-              </div>
+        <div class="page-intro">
+          <div>
+            <span class="eyebrow">Simulador</span>
+            <h2>Interés compuesto</h2>
+            <p>Compara escenarios, inflación y el tiempo necesario para llegar a tu objetivo.</p>
+          </div>
+        </div>
+
+        <details class="workspace-accordion" open>
+          <summary>
+            <span><strong>Diseña tu escenario</strong><small>Capital, aportaciones, rentabilidad e inflación</small></span>
+          </summary>
+          <div class="accordion-body">
+            <div class="compound-presets" aria-label="Escenarios rápidos">
+              <button class="compound-preset" type="button" data-compound-rate="3">Conservador <strong>3 %</strong></button>
+              <button class="compound-preset" type="button" data-compound-rate="5">Equilibrado <strong>5 %</strong></button>
+              <button class="compound-preset active" type="button" data-compound-rate="7">Dinámico <strong>7 %</strong></button>
             </div>
-            <div class="actions" style="margin-top:16px;">
-              <button class="btn btn-primary" id="calculate-compound">Calcular</button>
+            <div class="grid grid-3 compound-inputs">
+              <div><label for="compound-initial">Dinero inicial</label><input id="compound-initial" type="number" min="0" step="0.01" value="10000" /></div>
+              <div><label for="compound-monthly">Aportación mensual</label><input id="compound-monthly" type="number" min="0" step="0.01" value="300" /></div>
+              <div><label for="compound-rate">Rentabilidad anual (%)</label><input id="compound-rate" type="number" min="0" step="0.01" value="7" /></div>
+              <div><label for="compound-inflation">Inflación anual (%)</label><input id="compound-inflation" type="number" min="0" step="0.1" value="2" /></div>
+              <div><label for="compound-years">Plazo (años)</label><input id="compound-years" type="number" min="1" max="80" step="1" value="20" /></div>
+              <div><label for="compound-target">Objetivo de capital</label><input id="compound-target" type="number" min="0" step="1000" value="250000" /></div>
             </div>
-            <div class="kpi-grid" style="margin-top:18px; grid-template-columns: repeat(3, minmax(0,1fr));">
+            <div class="actions">
+              <button class="btn btn-primary" id="calculate-compound">Actualizar proyección</button>
+            </div>
+            <div class="kpi-grid compound-kpis">
               <div class="kpi info"><div class="kpi-label">Capital final</div><div class="kpi-value" id="compound-final">0 €</div></div>
               <div class="kpi"><div class="kpi-label">Total aportado</div><div class="kpi-value" id="compound-invested">0 €</div></div>
               <div class="kpi positive"><div class="kpi-label">Intereses generados</div><div class="kpi-value" id="compound-interest">0 €</div></div>
+              <div class="kpi info"><div class="kpi-label">Valor real final</div><div class="kpi-value" id="compound-real">0 €</div></div>
+              <div class="kpi"><div class="kpi-label">Objetivo</div><div class="kpi-value" id="compound-target-status">—</div></div>
             </div>
+            <div class="compound-insight" id="compound-insight"></div>
           </div>
-          <div class="card chart-card">
-            <h2>Gráfico por año</h2>
-            <p class="subtle">Barra por año: dinero aportado frente a intereses acumulados.</p>
+        </details>
+
+        <details class="workspace-accordion" open data-mobile-collapsed>
+          <summary>
+            <span><strong>Evolución visual</strong><small>Aportaciones, intereses y poder adquisitivo</small></span>
+          </summary>
+          <div class="accordion-body chart-card">
             <canvas id="compound-chart"></canvas>
           </div>
-        </div>
-        <div class="card" style="margin-top:18px;">
-          <h2>Tabla anual</h2>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Año</th>
-                  <th>Capital inicio año</th>
-                  <th>Aportado acumulado</th>
-                  <th>Intereses acumulados</th>
-                  <th>Capital final</th>
-                </tr>
-              </thead>
-              <tbody id="compound-table-body"></tbody>
-            </table>
+        </details>
+
+        <details class="workspace-accordion" data-mobile-collapsed>
+          <summary>
+            <span><strong>Tabla anual</strong><small>Detalle completo de la simulación</small></span>
+          </summary>
+          <div class="accordion-body">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Año</th>
+                    <th>Capital inicial</th>
+                    <th>Aportado</th>
+                    <th>Intereses</th>
+                    <th>Capital final</th>
+                    <th>Valor real</th>
+                  </tr>
+                </thead>
+                <tbody id="compound-table-body"></tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        </details>
       </section>
 
       <section id="tab-configuracion" class="tab-panel">
-        <div class="actions" style="margin-top:0; margin-bottom:18px; justify-content:flex-start;">
+        <div class="page-intro">
+          <div>
+            <span class="eyebrow">Preferencias</span>
+            <h2>Ajustes</h2>
+            <p>Configura la familia y los campos que aparecerán cada mes.</p>
+          </div>
           <button class="btn btn-primary" id="save-profile">Guardar configuración</button>
         </div>
-        <div class="grid grid-2">
-          <div class="card">
+
+        <details class="workspace-accordion" open>
+          <summary>
+            <span><strong>Familia</strong><small>Adultos, ingresos recurrentes e hijos</small></span>
+          </summary>
+          <div class="accordion-body">
+          <div class="card accordion-inner-card">
             <div class="section-title">
               <div>
                 <h2>Familia</h2>
@@ -569,8 +682,15 @@
 
             <div class="status" id="profile-status"></div>
           </div>
+          </div>
+        </details>
 
-          <div class="card">
+        <details class="workspace-accordion" data-mobile-collapsed>
+          <summary>
+            <span><strong>Gastos comunes fijos</strong><small>Campos base para cada período</small></span>
+          </summary>
+          <div class="accordion-body">
+          <div class="card accordion-inner-card">
             <h2>Gastos comunes fijos base</h2>
             <p class="subtle">Estos campos aparecen luego en cada mes.</p>
             <div class="field-row">
@@ -593,27 +713,33 @@
               </div>
               <div id="extra-fixed-list" class="dynamic-list"></div>
             </div>
-            <div class="category-card" style="margin-top:16px;">
-              <div class="section-title"><h3>Acciones rápidas</h3></div>
-              <div class="simple-list">
-                <div class="alert-row">
-                  <div>
-                    <strong>Copiar configuración actual al asistente de familia</strong>
-                    <div class="muted">Reabre el modal de alta si quieres cambiar rápido el núcleo familiar.</div>
-                  </div>
-                  <button class="btn btn-soft btn-inline" id="reopen-setup">Abrir asistente</button>
+          </div>
+          </div>
+        </details>
+
+        <details class="workspace-accordion danger-accordion" data-mobile-collapsed>
+          <summary>
+            <span><strong>Herramientas y seguridad</strong><small>Asistente familiar y borrado de datos</small></span>
+          </summary>
+          <div class="accordion-body">
+            <div class="simple-list">
+              <div class="alert-row">
+                <div>
+                  <strong>Editar con el asistente familiar</strong>
+                  <div class="muted">Reabre el alta para cambiar rápidamente el núcleo familiar.</div>
                 </div>
-                <div class="alert-row bad">
-                  <div>
-                    <strong>Borrar todos los datos del usuario actual</strong>
-                    <div class="muted">Elimina perfil, meses guardados, depósitos y renta fija.</div>
-                  </div>
-                  <button class="btn btn-danger btn-inline" id="wipe-user-data">Borrar datos</button>
+                <button class="btn btn-soft btn-inline" id="reopen-setup">Abrir asistente</button>
+              </div>
+              <div class="alert-row bad">
+                <div>
+                  <strong>Borrar todos los datos del usuario actual</strong>
+                  <div class="muted">Elimina perfil, meses guardados, depósitos e inversiones.</div>
                 </div>
+                <button class="btn btn-danger btn-inline" id="wipe-user-data">Borrar datos</button>
               </div>
             </div>
           </div>
-        </div>
+        </details>
       </section>
     </div>
   </div>

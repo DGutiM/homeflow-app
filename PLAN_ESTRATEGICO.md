@@ -27,16 +27,20 @@
 
 - Navegación inferior fija con cinco secciones.
 - Cabecera compacta en pantallas pequeñas.
+- Bloques desplegables para gastos comunes, inversiones, Diego, Itxaso, Iago y totales.
+- Histórico mensual en tarjetas, manteniendo las tablas completas en escritorio.
+- Inversiones y ajustes organizados en secciones desplegables.
 - KPI en dos columnas para reducir desplazamiento vertical.
 - Formularios en una columna y objetivos táctiles de al menos 44 píxeles.
-- Tablas con desplazamiento horizontal y acciones principales a ancho completo.
+- Acción de guardado accesible sobre la navegación inferior.
 
 ## Etapa 4 · Simplificación técnica
 
 - Extraer cálculos puros a `homeflow-core.js`.
 - Extraer los estilos a `styles.css` y la aplicación a `app.js`.
 - Mantener `index.html` como estructura compatible con GitHub Pages.
-- Añadir pruebas de clasificación, importes y ciclo de vida de depósitos.
+- Añadir pruebas de clasificación, importes, ciclo de vida de depósitos y actualización idempotente de meses.
+- Eliminar funciones sin llamadas y controles antiguos ya desconectados de la interfaz.
 - En una siguiente versión, dividir `app.js` por dominios cuando haya una herramienta de empaquetado.
 
 ## Etapa posterior

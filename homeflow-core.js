@@ -81,6 +81,12 @@
     );
   }
 
+  function upsertPeriodMap(periods, periodId, data) {
+    const next = { ...(periods || {}) };
+    next[String(periodId)] = data;
+    return next;
+  }
+
   root.HomeFlowCore = Object.freeze({
     getInvestmentCategory,
     groupClosedDepositInterestByYear,
@@ -90,6 +96,7 @@
     numberValue,
     parseMoneyInput,
     roundMoney,
-    sumInvestmentsByCategory
+    sumInvestmentsByCategory,
+    upsertPeriodMap
   });
 })(globalThis);

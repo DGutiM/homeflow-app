@@ -19,6 +19,13 @@ Aplicación web personal para registrar ingresos, gastos, inversiones, depósito
 - Un depósito cobrado desaparece del patrimonio y su interés neto se agrupa por año.
 - Los depósitos antiguos marcados con `sentToCash` se migran en memoria a `closed` sin perder información.
 
+## Interfaz
+
+- Mes, histórico, inversiones y ajustes usan bloques desplegables.
+- En móvil, el histórico se muestra como tarjetas legibles en vez de una tabla comprimida.
+- La acción de guardar el mes queda accesible sobre la navegación inferior.
+- La calculadora de interés compuesto compara escenarios, inflación, valor real y objetivo.
+
 ## Desarrollo
 
 La aplicación no necesita compilación. Para servirla localmente:
