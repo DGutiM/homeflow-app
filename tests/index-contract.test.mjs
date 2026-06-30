@@ -29,9 +29,13 @@ assert.doesNotMatch(html, /id="aggregated-monthly-investment-list"/);
 assert.doesNotMatch(html, /function applyTheme/);
 assert.match(app, /function renderActiveDepositList/);
 assert.match(app, /\(\) => renderActiveDepositList\(deposits, todayDevice\)/);
+assert.match(app, /HomeFlowCore\.calculateSavingsBreakdown/);
 assert.doesNotMatch(styles, /person-card-header|mini-summary-grid|surface-cash/);
 assert.match(styles, /\.mobile-nav\s*\{[\s\S]*?bottom:\s*0;/);
 assert.match(styles, /body\s*\{[\s\S]*?overflow:\s*visible;/);
+assert.match(html, /id="kpi-total-savings"/);
+assert.match(html, /id="hist-total-savings-total"/);
+assert.match(html, /data-scroll-on-open/);
 
 const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
 assert.equal(new Set(ids).size, ids.length, 'No debe haber IDs HTML duplicados');
