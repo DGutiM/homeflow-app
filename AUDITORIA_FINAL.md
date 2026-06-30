@@ -17,6 +17,7 @@
 - Referencias de controles estáticos revisadas.
 - Interfaz probada en 390 × 844 y 1280 × 900.
 - Sin desbordamiento horizontal en móvil ni escritorio.
+- Navegación inferior anclada al borde del viewport durante el scroll, con el área segura dentro de la barra.
 - Sin errores ni avisos en la consola del navegador.
 - Cero desplegables abiertos al iniciar, cero IDs duplicados y cero funciones sin uso.
 - El despliegue de 14 depósitos se probó sin una nueva consulta remota.
