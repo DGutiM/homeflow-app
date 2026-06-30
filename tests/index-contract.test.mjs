@@ -7,7 +7,7 @@ const styles = await readFile(new URL('../styles.css', import.meta.url), 'utf8')
 
 assert.match(html, /<script src="homeflow-core\.js"><\/script>/);
 assert.match(html, /<script src="app\.js"><\/script>/);
-assert.match(html, /<link rel="stylesheet" href="styles\.css"/);
+assert.match(html, /<link rel="stylesheet" href="styles\.css(?:\?[^"]+)?"/);
 assert.match(app, /document\.querySelectorAll\('\[data-tab\]'\)/);
 assert.doesNotMatch(app, /function sendDepositToCash/);
 assert.match(app, /HomeFlowCore\.upsertPeriodMap/);
@@ -30,6 +30,8 @@ assert.doesNotMatch(html, /function applyTheme/);
 assert.match(app, /function renderActiveDepositList/);
 assert.match(app, /\(\) => renderActiveDepositList\(deposits, todayDevice\)/);
 assert.doesNotMatch(styles, /person-card-header|mini-summary-grid|surface-cash/);
+assert.match(styles, /\.mobile-nav\s*\{[\s\S]*?bottom:\s*0;/);
+assert.match(styles, /body\s*\{[\s\S]*?overflow:\s*visible;/);
 
 const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
 assert.equal(new Set(ids).size, ids.length, 'No debe haber IDs HTML duplicados');
