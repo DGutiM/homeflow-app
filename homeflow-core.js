@@ -81,6 +81,23 @@
     );
   }
 
+  function calculateSavingsBreakdown(totalIncome, livingExpenses, longTermInvestment) {
+    const income = numberValue(totalIncome);
+    const living = numberValue(livingExpenses);
+    const invested = numberValue(longTermInvestment);
+    const availableSavings = roundMoney(income - living - invested);
+    const totalSavings = roundMoney(availableSavings + invested);
+    return {
+      livingExpenses: roundMoney(living),
+      longTermInvestment: roundMoney(invested),
+      availableSavings,
+      availableSavingsRate: income > 0 ? roundMoney((availableSavings / income) * 100) : 0,
+      totalSavings,
+      totalSavingsRate: income > 0 ? roundMoney((totalSavings / income) * 100) : 0,
+      totalOutflows: roundMoney(living + invested)
+    };
+  }
+
   function upsertPeriodMap(periods, periodId, data) {
     const next = { ...(periods || {}) };
     next[String(periodId)] = data;
@@ -88,6 +105,7 @@
   }
 
   root.HomeFlowCore = Object.freeze({
+    calculateSavingsBreakdown,
     getInvestmentCategory,
     groupClosedDepositInterestByYear,
     isDepositActive,

@@ -17,7 +17,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="homeflow-core.js"></script>
-  <link rel="stylesheet" href="styles.css?v=20260630-2" />
+  <link rel="stylesheet" href="styles.css?v=20260630-3" />
 </head>
 <body>
   <div class="app-shell">
@@ -161,11 +161,15 @@
           <div class="accordion-body">
             <div class="kpi-grid">
               <div class="kpi info"><div class="kpi-label">Ingresos hogar</div><div class="kpi-value" id="kpi-income">0 €</div></div>
-              <div class="kpi"><div class="kpi-label">Gastos hogar</div><div class="kpi-value" id="kpi-expenses">0 €</div></div>
-              <div class="kpi positive"><div class="kpi-label">Neto ahorrado</div><div class="kpi-value" id="kpi-savings">0 €</div></div>
-              <div class="kpi info"><div class="kpi-label">Tasa de ahorro</div><div class="kpi-value" id="kpi-rate">0 %</div></div>
-              <div class="kpi"><div class="kpi-label">Renta variable del mes</div><div class="kpi-value" id="kpi-investments">0 €</div></div>
-              <div class="kpi info"><div class="kpi-label">Renta fija acumulada</div><div class="kpi-value" id="kpi-fixed-income">0 €</div></div>
+              <div class="kpi"><div class="kpi-label">Gastos de vida</div><div class="kpi-value" id="kpi-expenses">0 €</div></div>
+              <div class="kpi positive"><div class="kpi-label">Ahorro disponible</div><div class="kpi-value" id="kpi-savings">0 €</div></div>
+              <div class="kpi"><div class="kpi-label">Invertido a largo plazo</div><div class="kpi-value" id="kpi-investments">0 €</div></div>
+              <div class="kpi positive"><div class="kpi-label">Ahorro total</div><div class="kpi-value" id="kpi-total-savings">0 €</div></div>
+              <div class="kpi info"><div class="kpi-label">Tasa de ahorro total</div><div class="kpi-value" id="kpi-rate">0 %</div></div>
+            </div>
+            <div class="savings-explainer">
+              <strong>Disponible</strong>: lo que queda después de gastos e inversión.
+              <strong>Total</strong>: disponible + fondos indexados destinados al largo plazo.
             </div>
           </div>
         </details>
@@ -209,9 +213,10 @@
           <div class="accordion-body">
             <div class="kpi-grid history-kpi-grid">
               <div class="kpi info"><div class="kpi-label">Ingresos</div><div class="kpi-value" id="hist-total-income">0 €</div></div>
-              <div class="kpi"><div class="kpi-label">Gastos</div><div class="kpi-value" id="hist-total-expenses">0 €</div></div>
-              <div class="kpi positive"><div class="kpi-label">Ahorro acumulado</div><div class="kpi-value" id="hist-total-savings">0 €</div></div>
-              <div class="kpi info"><div class="kpi-label">Tasa media</div><div class="kpi-value" id="hist-average-rate">0 %</div></div>
+              <div class="kpi"><div class="kpi-label">Salidas totales</div><div class="kpi-value" id="hist-total-expenses">0 €</div></div>
+              <div class="kpi positive"><div class="kpi-label">Disponible acumulado</div><div class="kpi-value" id="hist-total-savings">0 €</div></div>
+              <div class="kpi positive"><div class="kpi-label">Ahorro total acumulado</div><div class="kpi-value" id="hist-total-savings-total">0 €</div></div>
+              <div class="kpi info"><div class="kpi-label">Tasa total media</div><div class="kpi-value" id="hist-average-rate">0 %</div></div>
               <div class="kpi"><div class="kpi-label">Meses</div><div class="kpi-value" id="hist-count">0</div></div>
             </div>
           </div>
@@ -268,10 +273,11 @@
                     <th>Gastos personales</th>
                     <th>Gastos hijos</th>
                     <th>Renta variable mes</th>
-                    <th>Gastos totales</th>
-                    <th>Neto ahorrado</th>
-                    <th>Neto acumulado</th>
-                    <th>Tasa ahorro</th>
+                    <th>Salidas totales</th>
+                    <th>Ahorro disponible</th>
+                    <th>Disponible acumulado</th>
+                    <th>Ahorro total</th>
+                    <th>Tasa total</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -712,7 +718,7 @@
           </div>
         </details>
 
-        <details class="workspace-accordion danger-accordion" data-mobile-collapsed>
+        <details class="workspace-accordion danger-accordion" data-mobile-collapsed data-scroll-on-open>
           <summary>
             <span><strong>Herramientas y seguridad</strong><small>Asistente familiar y borrado de datos</small></span>
           </summary>

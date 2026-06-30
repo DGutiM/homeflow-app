@@ -503,6 +503,14 @@
         if (isMobile && details.hasAttribute('data-mobile-collapsed')) details.open = false;
         details.addEventListener('toggle', () => {
           if (!details.open) return;
+          if (isMobile && details.hasAttribute('data-scroll-on-open')) {
+            window.setTimeout(() => {
+              const headerBottom = document.querySelector('.hero')?.getBoundingClientRect().bottom || 0;
+              const detailsTop = details.getBoundingClientRect().top;
+              const targetTop = Math.max(0, window.scrollY + detailsTop - headerBottom - 8);
+              window.scrollTo({ top: targetTop, behavior: 'smooth' });
+            }, 80);
+          }
           window.requestAnimationFrame(() => {
             Object.values(state.charts || {}).forEach(chart => chart?.resize?.());
           });
@@ -1315,7 +1323,7 @@
       await renderInvestmentsTab();
     }
 
-function calculateTotals(profile = state.profile, form = state.form) {
+    function calculateTotals(profile = state.profile, form = state.form) {
       const loadedContext = form === state.form ? getLoadedFormContext() : null;
       const contextAdults = loadedContext ? (loadedContext.adults || []) : getActiveAdults(profile);
       const contextChildren = loadedContext ? (loadedContext.children || []) : getActiveChildren(profile);
@@ -1339,9 +1347,11 @@ function calculateTotals(profile = state.profile, form = state.form) {
       const dependentExpenses = childrenExpenses.reduce((acc, item) => acc + item.total, 0);
 
       const investments = sumList(getFundMonthlyInvestments(form.expenses?.monthlyInvestments || []));
-      const totalExpenses = commonExpenses + personalExpenses + dependentExpenses + investments;
-      const savings = totalIncome - totalExpenses;
-      const savingsRate = totalIncome > 0 ? (savings / totalIncome) * 100 : 0;
+      const livingExpenses = commonExpenses + personalExpenses + dependentExpenses;
+      const savingsBreakdown = HomeFlowCore.calculateSavingsBreakdown(totalIncome, livingExpenses, investments);
+      const totalExpenses = savingsBreakdown.totalOutflows;
+      const savings = savingsBreakdown.availableSavings;
+      const savingsRate = savingsBreakdown.availableSavingsRate;
       const fixedPositionsTotal = currentInvestmentPositions()
         .filter(item => getInvestmentCategory(item.type) === 'fixed')
         .reduce((acc, item) => acc + num(item.amount), 0);
@@ -1361,25 +1371,32 @@ function calculateTotals(profile = state.profile, form = state.form) {
         childrenExpenses,
         dependentExpenses,
         investments,
+        livingExpenses,
+        longTermInvestment: savingsBreakdown.longTermInvestment,
         fixedIncomeTotal,
         totalExpenses,
         savings,
-        savingsRate
+        savingsRate,
+        totalSavings: savingsBreakdown.totalSavings,
+        totalSavingsRate: savingsBreakdown.totalSavingsRate
       };
     }
 
     function renderMonthlySummary() {
       const totals = calculateTotals();
       setText('kpi-income', formatCurrency(totals.totalIncome));
-      setText('kpi-expenses', formatCurrency(totals.totalExpenses));
+      setText('kpi-expenses', formatCurrency(totals.livingExpenses));
       setText('kpi-savings', formatCurrency(totals.savings));
-      setText('kpi-rate', formatPercent(totals.savingsRate));
+      setText('kpi-rate', formatPercent(totals.totalSavingsRate));
       setText('kpi-investments', formatCurrency(totals.investments));
-      setText('kpi-fixed-income', formatCurrency(totals.fixedIncomeTotal));
+      setText('kpi-total-savings', formatCurrency(totals.totalSavings));
 
       const savingsKpi = document.getElementById('kpi-savings').closest('.kpi');
       savingsKpi.classList.toggle('positive', totals.savings >= 0);
       savingsKpi.classList.toggle('negative', totals.savings < 0);
+      const totalSavingsKpi = document.getElementById('kpi-total-savings')?.closest('.kpi');
+      totalSavingsKpi?.classList.toggle('positive', totals.totalSavings >= 0);
+      totalSavingsKpi?.classList.toggle('negative', totals.totalSavings < 0);
 
       document.getElementById('totals-income-box').innerHTML = totals.incomeAdults.map(item => (
         `<div class="total-item"><strong>Ingresos ${escapeHtml(item.adult.name)}</strong><span class="amount">${formatCurrency(item.total)}</span></div>`
@@ -1389,14 +1406,18 @@ function calculateTotals(profile = state.profile, form = state.form) {
         <div class="total-item"><strong>Gastos comunes</strong><span class="amount">${formatCurrency(totals.commonExpenses)}</span></div>
         <div class="total-item"><strong>Gastos personales</strong><span class="amount">${formatCurrency(totals.personalExpenses)}</span></div>
         <div class="total-item"><strong>Gastos hijos</strong><span class="amount">${formatCurrency(totals.dependentExpenses)}</span></div>
-        <div class="total-item"><strong>Renta variable del mes</strong><span class="amount">${formatCurrency(totals.investments)}</span></div>
+        <div class="total-item"><strong>Gastos de vida</strong><span class="amount">${formatCurrency(totals.livingExpenses)}</span></div>
+        <div class="total-item"><strong>Inversión a largo plazo</strong><span class="amount">${formatCurrency(totals.investments)}</span></div>
       `;
 
       document.getElementById('totals-balance-box').innerHTML = `
-        <div class="total-item"><strong>Neto ahorrado</strong><span class="amount">${formatCurrency(totals.savings)}</span></div>
-        <div class="total-item"><strong>Tasa de ahorro</strong><span class="amount">${formatPercent(totals.savingsRate)}</span></div>
+        <div class="total-item"><strong>Ahorro disponible</strong><span class="amount">${formatCurrency(totals.savings)}</span></div>
+        <div class="total-item"><strong>Ahorro a largo plazo</strong><span class="amount">${formatCurrency(totals.investments)}</span></div>
+        <div class="total-item"><strong>Ahorro total</strong><span class="amount">${formatCurrency(totals.totalSavings)}</span></div>
+        <div class="total-item"><strong>Tasa disponible</strong><span class="amount">${formatPercent(totals.savingsRate)}</span></div>
+        <div class="total-item"><strong>Tasa de ahorro total</strong><span class="amount">${formatPercent(totals.totalSavingsRate)}</span></div>
         <div class="total-item"><strong>Renta fija acumulada</strong><span class="amount">${formatCurrency(totals.fixedIncomeTotal)}</span></div>
-        <div class="total-item"><strong>Total gastos</strong><span class="amount">${formatCurrency(totals.totalExpenses)}</span></div>
+        <div class="total-item"><strong>Salidas totales</strong><span class="amount">${formatCurrency(totals.totalExpenses)}</span></div>
       `;
     }
 
@@ -1434,10 +1455,12 @@ function calculateTotals(profile = state.profile, form = state.form) {
       const income = rows.reduce((acc, row) => acc + row.totals.totalIncome, 0);
       const expenses = rows.reduce((acc, row) => acc + row.totals.totalExpenses, 0);
       const cumulativeSavings = rows.reduce((acc, row) => acc + row.totals.savings, 0);
-      const avgRate = rows.length ? rows.reduce((acc, row) => acc + row.totals.savingsRate, 0) / rows.length : 0;
+      const cumulativeTotalSavings = rows.reduce((acc, row) => acc + row.totals.totalSavings, 0);
+      const avgRate = rows.length ? rows.reduce((acc, row) => acc + row.totals.totalSavingsRate, 0) / rows.length : 0;
       setText('hist-total-income', formatCurrency(income));
       setText('hist-total-expenses', formatCurrency(expenses));
       setText('hist-total-savings', formatCurrency(cumulativeSavings));
+      setText('hist-total-savings-total', formatCurrency(cumulativeTotalSavings));
       setText('hist-average-rate', formatPercent(avgRate));
       setText('hist-count', String(rows.length));
     }
@@ -1448,7 +1471,7 @@ function calculateTotals(profile = state.profile, form = state.form) {
       tbody.innerHTML = '';
       if (mobileList) mobileList.innerHTML = '';
       if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="11" class="muted">No hay períodos guardados todavía.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="12" class="muted">No hay períodos guardados todavía.</td></tr>';
         if (mobileList) mobileList.innerHTML = '<div class="empty-box">No hay períodos guardados todavía.</div>';
         return;
       }
@@ -1466,7 +1489,8 @@ function calculateTotals(profile = state.profile, form = state.form) {
           <td>${formatCurrency(row.totals.totalExpenses)}</td>
           <td>${formatCurrency(row.totals.savings)}</td>
           <td>${formatCurrency(cumulativeSavings)}</td>
-          <td>${formatPercent(row.totals.savingsRate)}</td>
+          <td>${formatCurrency(row.totals.totalSavings)}</td>
+          <td>${formatPercent(row.totals.totalSavingsRate)}</td>
           <td><button class="btn btn-soft btn-inline" data-open-period="${row.period}">Abrir</button></td>
         `;
         tbody.appendChild(tr);
@@ -1476,13 +1500,14 @@ function calculateTotals(profile = state.profile, form = state.form) {
           card.innerHTML = `
             <div class="history-month-card-header">
               <h3>${formatPeriod(row.period)}</h3>
-              <span class="badge ${row.totals.savings >= 0 ? 'good' : 'warn'}">${formatPercent(row.totals.savingsRate)}</span>
+              <span class="badge ${row.totals.totalSavings >= 0 ? 'good' : 'warn'}">${formatPercent(row.totals.totalSavingsRate)}</span>
             </div>
             <div class="history-month-grid">
               <div class="history-month-stat"><span>Ingresos</span><strong>${formatCurrency(row.totals.totalIncome)}</strong></div>
-              <div class="history-month-stat"><span>Gastos</span><strong>${formatCurrency(row.totals.totalExpenses)}</strong></div>
-              <div class="history-month-stat"><span>Ahorro</span><strong>${formatCurrency(row.totals.savings)}</strong></div>
-              <div class="history-month-stat"><span>Inversión variable</span><strong>${formatCurrency(row.totals.investments)}</strong></div>
+              <div class="history-month-stat"><span>Gastos de vida</span><strong>${formatCurrency(row.totals.livingExpenses)}</strong></div>
+              <div class="history-month-stat"><span>Disponible</span><strong>${formatCurrency(row.totals.savings)}</strong></div>
+              <div class="history-month-stat"><span>Largo plazo</span><strong>${formatCurrency(row.totals.investments)}</strong></div>
+              <div class="history-month-stat"><span>Ahorro total</span><strong>${formatCurrency(row.totals.totalSavings)}</strong></div>
             </div>
             <button type="button" class="btn btn-soft" data-open-period="${row.period}">Abrir y editar este mes</button>
           `;
@@ -1649,12 +1674,13 @@ function calculateTotals(profile = state.profile, form = state.form) {
       const dependentExpenses = rows.map(r => round2(r.totals.dependentExpenses));
       const investments = rows.map(r => round2(r.totals.investments));
       const savings = rows.map(r => round2(r.totals.savings));
-      const rates = rows.map(r => round2(r.totals.savingsRate));
-      const cumulativeSavings = [];
-      let runningSavings = 0;
+      const totalSavings = rows.map(r => round2(r.totals.totalSavings));
+      const totalSavingsRates = rows.map(r => round2(r.totals.totalSavingsRate));
+      const cumulativeTotalSavings = [];
+      let runningTotalSavings = 0;
       rows.forEach(r => {
-        runningSavings += r.totals.savings;
-        cumulativeSavings.push(round2(runningSavings));
+        runningTotalSavings += r.totals.totalSavings;
+        cumulativeTotalSavings.push(round2(runningTotalSavings));
       });
 
       buildChart('history-income-chart', {
@@ -1670,8 +1696,8 @@ function calculateTotals(profile = state.profile, form = state.form) {
             { label: 'Gastos comunes', data: commonExpenses, backgroundColor: '#f59e0b', stack: 'gastos' },
             { label: 'Gastos personales', data: personalExpenses, backgroundColor: '#60a5fa', stack: 'gastos' },
             { label: 'Gastos hijos', data: dependentExpenses, backgroundColor: '#f97316', stack: 'gastos' },
-            { label: 'Renta variable mes', data: investments, backgroundColor: '#8b5cf6', stack: 'gastos' },
-            { label: 'Neto ahorrado', data: savings, type: 'line', borderColor: '#22c55e', backgroundColor: '#22c55e', yAxisID: 'y1', tension: 0.3 }
+            { label: 'Inversión a largo plazo', data: investments, backgroundColor: '#8b5cf6', stack: 'gastos' },
+            { label: 'Ahorro disponible', data: savings, type: 'line', borderColor: '#22c55e', backgroundColor: '#22c55e', yAxisID: 'y1', tension: 0.3 }
           ]
         },
         options: {
@@ -1690,9 +1716,10 @@ function calculateTotals(profile = state.profile, form = state.form) {
         data: {
           labels,
           datasets: [
-            { label: 'Neto ahorrado mensual', data: savings, backgroundColor: '#22c55e', yAxisID: 'y' },
-            { label: 'Neto ahorrado acumulado', data: cumulativeSavings, type: 'line', borderColor: '#2563eb', backgroundColor: '#2563eb', yAxisID: 'y', tension: 0.3 },
-            { label: 'Tasa de ahorro (%)', data: rates, type: 'line', borderColor: '#15325b', backgroundColor: '#15325b', yAxisID: 'y1', tension: 0.3 }
+            { label: 'Ahorro disponible mensual', data: savings, backgroundColor: '#22c55e', yAxisID: 'y' },
+            { label: 'Ahorro total mensual', data: totalSavings, type: 'line', borderColor: '#8b5cf6', backgroundColor: '#8b5cf6', yAxisID: 'y', tension: 0.3 },
+            { label: 'Ahorro total acumulado', data: cumulativeTotalSavings, type: 'line', borderColor: '#2563eb', backgroundColor: '#2563eb', yAxisID: 'y', tension: 0.3 },
+            { label: 'Tasa de ahorro total (%)', data: totalSavingsRates, type: 'line', borderColor: '#15325b', backgroundColor: '#15325b', yAxisID: 'y1', tension: 0.3 }
           ]
         },
         options: {
@@ -2943,10 +2970,13 @@ async function addHistoricalInvestment() {
           Gastos_Comunes: round2(totals.commonExpenses),
           Gastos_Personales: round2(totals.personalExpenses),
           Gastos_Hijos: round2(totals.dependentExpenses),
-          Fondos_Mes: round2(totals.investments),
-          Gastos_Totales: round2(totals.totalExpenses),
-          Neto_Ahorrado: round2(totals.savings),
-          Tasa_Ahorro: round2(totals.savingsRate),
+          Gastos_Vida: round2(totals.livingExpenses),
+          Inversion_Largo_Plazo: round2(totals.investments),
+          Salidas_Totales: round2(totals.totalExpenses),
+          Ahorro_Disponible: round2(totals.savings),
+          Tasa_Disponible: round2(totals.savingsRate),
+          Ahorro_Total: round2(totals.totalSavings),
+          Tasa_Ahorro_Total: round2(totals.totalSavingsRate),
           Renta_Fija_Acumulada: round2(totals.fixedIncomeTotal)
         };
       });
@@ -2992,15 +3022,16 @@ async function addHistoricalInvestment() {
         return [
           formatPeriod(period),
           formatCurrency(totals.totalIncome),
-          formatCurrency(totals.totalExpenses),
+          formatCurrency(totals.livingExpenses),
+          formatCurrency(totals.investments),
           formatCurrency(totals.savings),
-          formatPercent(totals.savingsRate)
+          formatCurrency(totals.totalSavings)
         ];
       });
 
       doc.autoTable({
         startY: y + 18,
-        head: [['Período', 'Ingresos', 'Gastos', 'Neto ahorrado', 'Tasa ahorro']],
+        head: [['Período', 'Ingresos', 'Gastos vida', 'Largo plazo', 'Disponible', 'Ahorro total']],
         body: summaryRows,
         margin: { left: margin, right: margin },
         styles: { fontSize: 9, cellPadding: 6 },

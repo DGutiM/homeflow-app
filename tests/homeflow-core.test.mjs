@@ -62,4 +62,30 @@ assert.equal(Object.keys(updatedPeriods).length, 1);
 assert.equal(updatedPeriods['2026-06'].income, 1250);
 assert.equal(originalPeriods['2026-06'].income, 1000);
 
+assert.deepEqual(
+  core.calculateSavingsBreakdown(5000, 3000, 500),
+  {
+    livingExpenses: 3000,
+    longTermInvestment: 500,
+    availableSavings: 1500,
+    availableSavingsRate: 30,
+    totalSavings: 2000,
+    totalSavingsRate: 40,
+    totalOutflows: 3500
+  }
+);
+
+assert.deepEqual(
+  core.calculateSavingsBreakdown(0, 100, 50),
+  {
+    livingExpenses: 100,
+    longTermInvestment: 50,
+    availableSavings: -150,
+    availableSavingsRate: 0,
+    totalSavings: -100,
+    totalSavingsRate: 0,
+    totalOutflows: 150
+  }
+);
+
 console.log('homeflow-core: pruebas correctas');
