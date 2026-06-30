@@ -23,9 +23,19 @@
   <div class="app-shell">
     <header class="hero">
       <img src="icon.png" alt="Icono HomeFlow" />
-      <div>
-        <h1>HomeFlow</h1>
-        <p>Control familiar con acceso por usuario, configuración inicial de la familia, inversiones, depósitos, histórico y exportación.</p>
+      <div class="hero-main">
+        <div class="hero-copy">
+          <h1>HomeFlow</h1>
+          <p>Control familiar de ahorro, inversiones y gastos.</p>
+        </div>
+        <div class="hero-actions">
+          <button class="header-action" id="auth-toggle" type="button" aria-controls="auth-card" aria-expanded="true">
+            <span aria-hidden="true">●</span><span class="header-action-label">Acceso</span>
+          </button>
+          <button class="header-action" id="theme-toggle" type="button" aria-label="Cambiar tema">
+            <span class="theme-icon" aria-hidden="true">☀️</span><span class="theme-label">Claro</span>
+          </button>
+        </div>
       </div>
       <div class="pill-group" id="hero-quick-nav">
         <button class="tab-button active" data-tab="mensual">Calculadora mensual</button>
@@ -33,7 +43,6 @@
         <button class="tab-button" data-tab="inversiones">Inversiones</button>
         <button class="tab-button" data-tab="interes">Interés compuesto</button>
         <button class="tab-button" data-tab="configuracion">Configuración</button>
-        <button class="tab-button" id="theme-toggle" type="button" aria-label="Cambiar tema">☀️ Claro</button>
       </div>
     </header>
 
@@ -110,15 +119,14 @@
       </nav>
 
       <section id="tab-mensual" class="tab-panel active">
-        <div class="card">
-          <div class="section-title">
+        <div class="card period-card">
+          <div class="period-heading">
             <div>
               <h2>Período</h2>
               <p class="subtle">Carga el mes, rellena los datos y guarda.</p>
             </div>
-            
           </div>
-          <div class="grid grid-3">
+          <div class="period-controls">
             <div>
               <label for="period-month">Mes</label>
               <select id="period-month"></select>
@@ -129,7 +137,7 @@
             </div>
             <div>
               <label>&nbsp;</label>
-              <button class="btn btn-primary" id="load-period">Cargar período</button>
+              <button class="btn btn-primary" id="load-period">Cargar</button>
             </div>
           </div>
           <div class="status" id="save-status"></div>
@@ -146,7 +154,7 @@
           </div>
         </div>
 
-        <details class="workspace-accordion monthly-summary-card" open>
+        <details class="workspace-accordion monthly-summary-card">
           <summary>
             <span><strong>Resumen del mes</strong><small>Los cálculos se actualizan automáticamente</small></span>
           </summary>
@@ -162,7 +170,7 @@
           </div>
         </details>
 
-        <div id="monthly-dynamic-area" style="margin-top:18px;"></div>
+        <div id="monthly-dynamic-area" class="monthly-dynamic-area"></div>
 
         <details class="workspace-accordion monthly-totals-card" data-mobile-collapsed>
           <summary>
@@ -194,7 +202,7 @@
           </div>
         </div>
 
-        <details class="workspace-accordion" open>
+        <details class="workspace-accordion">
           <summary>
             <span><strong>Resumen histórico</strong><small>Totales y media de ahorro</small></span>
           </summary>
@@ -209,7 +217,7 @@
           </div>
         </details>
 
-        <details class="workspace-accordion" open data-mobile-collapsed>
+        <details class="workspace-accordion" data-mobile-collapsed>
           <summary>
             <span><strong>Evolución por mes</strong><small>Ingresos, reparto y ahorro</small></span>
           </summary>
@@ -244,7 +252,7 @@
           </div>
         </details>
 
-        <details class="workspace-accordion" open>
+        <details class="workspace-accordion">
           <summary>
             <span><strong>Meses guardados</strong><small>Abre un mes para corregirlo sin duplicarlo</small></span>
           </summary>
@@ -298,7 +306,7 @@
           </div>
         </div>
 
-        <details class="workspace-accordion" open>
+        <details class="workspace-accordion">
           <summary>
             <span><strong>Resumen global</strong><small>Renta variable, fija, depósitos y vivienda</small></span>
           </summary>
@@ -319,61 +327,15 @@
 
         <details class="workspace-accordion" data-mobile-collapsed>
           <summary>
-            <span><strong>Reparto de inversiones</strong><small>Distribución visual del patrimonio</small></span>
+            <span><strong>Rosco Económico</strong><small>Distribución visual del patrimonio</small></span>
           </summary>
           <div class="accordion-body">
         <div class="card accordion-inner-card chart-card chart-highlight">
-          <h2>Reparto de inversiones</h2>
+          <h2>Rosco Económico</h2>
           <p class="subtle">Vista rápida del peso de renta variable, renta fija, depósitos y vivienda pagada.</p>
           <div class="chart-with-legend">
             <div><canvas id="investments-distribution-chart"></canvas></div>
             <div id="investments-distribution-legend" class="chart-legend-box"></div>
-          </div>
-        </div>
-          </div>
-        </details>
-
-
-        <details class="workspace-accordion" data-mobile-collapsed>
-          <summary>
-            <span><strong>Inversiones ya existentes</strong><small>Añadir o corregir posiciones previas</small></span>
-          </summary>
-          <div class="accordion-body">
-        <div class="card accordion-inner-card">
-          <div class="section-title">
-            <div>
-              <h2>Inversiones ya existentes</h2>
-              <p class="subtle">Para patrimonio previo que ya tenías antes de empezar a usar HomeFlow. Suma al patrimonio, pero no afecta al resto de bloques.</p>
-            </div>
-          </div>
-          <div class="category-card">
-            <div class="field-row-4">
-              <div>
-                <label for="historical-investment-name">Concepto</label>
-                <input id="historical-investment-name" type="text" placeholder="Ej. Fondo indexado / Bono / Letra" />
-              </div>
-              <div>
-                <label for="historical-investment-type">Tipo</label>
-                <select id="historical-investment-type">
-                  <option value="Renta variable">Renta variable</option>
-                  <option value="Renta fija">Renta fija</option>
-                </select>
-              </div>
-              <div>
-                <label for="historical-investment-owner">Titular</label>
-                <select id="historical-investment-owner"><option value="Hogar">Hogar</option></select>
-              </div>
-              <div>
-                <label for="historical-investment-amount">Importe (€)</label>
-                <input id="historical-investment-amount" type="number" min="0" step="0.01" />
-              </div>
-              <button class="btn btn-soft" id="add-historical-investment">Añadir previo</button>
-            </div>
-            <div class="status" id="historical-investment-status"></div>
-          </div>
-          <div class="category-card" style="margin-top:16px;">
-            <div class="section-title"><h3>Listado de inversiones previas</h3><span class="muted">Renta variable y renta fija se calculan por separado</span></div>
-            <div id="historical-investment-list" class="dynamic-list"></div>
           </div>
         </div>
           </div>
@@ -488,12 +450,12 @@
 
         <details class="workspace-accordion" data-mobile-collapsed>
           <summary>
-            <span><strong>Desglose por titular</strong><small>Diego, Itxaso, hogar y otros titulares</small></span>
+            <span><strong>Patrimonio y traspasos</strong><small>Operaciones separadas por titular</small></span>
           </summary>
           <div class="accordion-body">
         <div class="card accordion-inner-card owner-breakdown-card">
-          <h2>Desglose por titular</h2>
-          <p class="subtle">Cada titular muestra renta fija, renta variable, depósitos, bajas de renta fija y total invertido.</p>
+          <h2>Operaciones por titular</h2>
+          <p class="subtle">Consulta el patrimonio de cada persona y registra retiradas o traspasos de renta fija a variable.</p>
           <div id="investments-by-owner" class="grid"></div>
         </div>
           </div>
@@ -501,20 +463,13 @@
 
         <details class="workspace-accordion" data-mobile-collapsed>
           <summary>
-            <span><strong>Movimientos y depósitos activos</strong><small>Aportaciones mensuales y vencimientos</small></span>
+            <span><strong>Listado de depósitos</strong><small>Capital, vencimientos y cobro</small></span>
           </summary>
           <div class="accordion-body">
-        <div class="grid grid-2">
-          <div class="card movement-card">
-            <h2>Renta variable y renta fija desde la calculadora</h2>
-            <div id="aggregated-monthly-investment-list" class="dynamic-list"></div>
-          </div>
-          <div class="card">
-            <h2>Listado de depósitos</h2>
+          <div class="card accordion-inner-card">
             <p class="subtle" id="deposit-today-note"></p>
             <div id="deposit-list" class="dynamic-list"></div>
           </div>
-        </div>
           </div>
         </details>
         <details class="workspace-accordion" data-mobile-collapsed>
@@ -545,7 +500,7 @@
           </div>
         </div>
 
-        <details class="workspace-accordion" open>
+        <details class="workspace-accordion">
           <summary>
             <span><strong>Diseña tu escenario</strong><small>Capital, aportaciones, rentabilidad e inflación</small></span>
           </summary>
@@ -577,7 +532,7 @@
           </div>
         </details>
 
-        <details class="workspace-accordion" open data-mobile-collapsed>
+        <details class="workspace-accordion" data-mobile-collapsed>
           <summary>
             <span><strong>Evolución visual</strong><small>Aportaciones, intereses y poder adquisitivo</small></span>
           </summary>
@@ -620,7 +575,7 @@
           <button class="btn btn-primary" id="save-profile">Guardar configuración</button>
         </div>
 
-        <details class="workspace-accordion" open>
+        <details class="workspace-accordion">
           <summary>
             <span><strong>Familia</strong><small>Adultos, ingresos recurrentes e hijos</small></span>
           </summary>
@@ -717,6 +672,46 @@
           </div>
         </details>
 
+        <details class="workspace-accordion" data-mobile-collapsed>
+          <summary>
+            <span><strong>Patrimonio inicial</strong><small>Inversiones que ya existían al empezar</small></span>
+          </summary>
+          <div class="accordion-body">
+            <div class="card accordion-inner-card">
+              <p class="subtle">Este bloque se usa normalmente una sola vez. Permite añadir o corregir posiciones previas sin afectar a los meses guardados.</p>
+              <div class="category-card">
+                <div class="field-row-4">
+                  <div>
+                    <label for="historical-investment-name">Concepto</label>
+                    <input id="historical-investment-name" type="text" placeholder="Ej. Fondo indexado / Bono / Letra" />
+                  </div>
+                  <div>
+                    <label for="historical-investment-type">Tipo</label>
+                    <select id="historical-investment-type">
+                      <option value="Renta variable">Renta variable</option>
+                      <option value="Renta fija">Renta fija</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label for="historical-investment-owner">Titular</label>
+                    <select id="historical-investment-owner"><option value="Hogar">Hogar</option></select>
+                  </div>
+                  <div>
+                    <label for="historical-investment-amount">Importe (€)</label>
+                    <input id="historical-investment-amount" type="number" min="0" step="0.01" />
+                  </div>
+                  <button class="btn btn-soft" id="add-historical-investment">Añadir posición</button>
+                </div>
+                <div class="status" id="historical-investment-status"></div>
+              </div>
+              <div class="category-card" style="margin-top:16px;">
+                <div class="section-title"><h3>Posiciones iniciales</h3><span class="muted">Renta variable y fija se calculan por separado</span></div>
+                <div id="historical-investment-list" class="dynamic-list"></div>
+              </div>
+            </div>
+          </div>
+        </details>
+
         <details class="workspace-accordion danger-accordion" data-mobile-collapsed>
           <summary>
             <span><strong>Herramientas y seguridad</strong><small>Asistente familiar y borrado de datos</small></span>
@@ -806,30 +801,6 @@
       <div class="status" id="setup-status"></div>
     </div>
   </div>
-
-
-  <script>
-    function applyTheme(theme) {
-      const isDark = theme !== 'light';
-      document.body.classList.toggle('dark', isDark);
-      const toggle = document.getElementById('theme-toggle');
-      if (toggle) toggle.textContent = isDark ? '☀️ Claro' : '🌙 Oscuro';
-    }
-    (function initTheme(){
-      const savedTheme = localStorage.getItem('homeflow-theme') || 'dark';
-      applyTheme(savedTheme);
-      document.addEventListener('DOMContentLoaded', () => {
-        const toggle = document.getElementById('theme-toggle');
-        if (toggle) {
-          toggle.addEventListener('click', () => {
-            const next = document.body.classList.contains('dark') ? 'light' : 'dark';
-            localStorage.setItem('homeflow-theme', next);
-            applyTheme(next);
-          });
-        }
-      });
-    })();
-  </script>
 
   <script src="app.js"></script>
 </body>
