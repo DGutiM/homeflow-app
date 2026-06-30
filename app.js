@@ -510,7 +510,42 @@
       });
     }
 
+    function setAuthPanelExpanded(expanded) {
+      const card = document.getElementById('auth-card');
+      const toggle = document.getElementById('auth-toggle');
+      if (!card || !toggle) return;
+      card.classList.toggle('hidden', !expanded);
+      toggle.setAttribute('aria-expanded', String(expanded));
+      toggle.classList.toggle('authenticated', !!state.currentUser);
+      const label = toggle.querySelector('.header-action-label');
+      if (label) label.textContent = state.currentUser ? 'Cuenta' : 'Acceso';
+    }
+
+    function applyTheme(theme) {
+      const isDark = theme !== 'light';
+      document.body.classList.toggle('dark', isDark);
+      const toggle = document.getElementById('theme-toggle');
+      if (!toggle) return;
+      const icon = toggle.querySelector('.theme-icon');
+      const label = toggle.querySelector('.theme-label');
+      if (icon) icon.textContent = isDark ? '☀️' : '🌙';
+      if (label) label.textContent = isDark ? 'Claro' : 'Oscuro';
+    }
+
+    function initTheme() {
+      applyTheme(localStorage.getItem('homeflow-theme') || 'dark');
+      document.getElementById('theme-toggle')?.addEventListener('click', () => {
+        const next = document.body.classList.contains('dark') ? 'light' : 'dark';
+        localStorage.setItem('homeflow-theme', next);
+        applyTheme(next);
+      });
+    }
+
     function bindActions() {
+      document.getElementById('auth-toggle').addEventListener('click', () => {
+        const card = document.getElementById('auth-card');
+        setAuthPanelExpanded(card.classList.contains('hidden'));
+      });
       document.getElementById('btn-login').addEventListener('click', handleLogin);
       document.getElementById('btn-register').addEventListener('click', handleRegister);
       document.getElementById('btn-reset-password').addEventListener('click', handleResetPassword);
@@ -590,6 +625,7 @@
         state.currentUser = user;
         document.getElementById('auth-logged-out').classList.add('hidden');
         document.getElementById('auth-logged-in').classList.remove('hidden');
+        setAuthPanelExpanded(false);
         document.getElementById('app-content').classList.remove('hidden');
         document.getElementById('current-user-label').textContent = `Usuario conectado: ${user.email}`;
         state.profile = normalizeProfile(await storageAdapter.getProfile());
@@ -628,6 +664,7 @@
       state.investmentTotals = null;
       document.getElementById('auth-logged-out').classList.remove('hidden');
       document.getElementById('auth-logged-in').classList.add('hidden');
+      setAuthPanelExpanded(true);
       document.getElementById('app-content').classList.add('hidden');
       setAuthStatus('');
       closeSetupModal();
@@ -788,7 +825,7 @@
       const fixedLabels = loadedContext.fixedExpenseLabels || state.profile.fixedExpenseLabels;
       area.innerHTML = `
         <div class="accordion-stack">
-          <details class="workspace-accordion monthly-common-card" open data-mobile-collapsed>
+          <details class="workspace-accordion monthly-common-card" data-mobile-collapsed>
             <summary><span><strong>Gastos comunes</strong><small>Vivienda, suministros, supermercado y otros</small></span></summary>
             <div class="accordion-body">
             <div class="field-row">
@@ -834,8 +871,8 @@
             </div>
           </details>
 
-          <details class="workspace-accordion monthly-invest-card" open data-mobile-collapsed>
-            <summary><span><strong>Inversiones</strong><small>Aportaciones de este mes por tipo y titular</small></span></summary>
+          <details class="workspace-accordion monthly-invest-card" data-mobile-collapsed>
+            <summary><span><strong>Inversiones comunes</strong><small>Aportaciones del hogar por tipo y titular</small></span></summary>
             <div class="accordion-body">
             <div class="category-card">
               <div class="section-title"><h3>Aportaciones mensuales</h3><span class="muted">La renta variable y la renta fija alimentan su categoría correspondiente</span></div>
@@ -949,7 +986,6 @@
         const card = document.createElement('details');
         card.className = 'workspace-accordion person-card';
         card.setAttribute('data-mobile-collapsed', '');
-        card.open = true;
         const incomeBlock = state.form.incomes.adults[adult.id] || { mainFixed: 0, mainLabel: adult.mainIncomeLabel || 'Ingreso principal', recurring: {}, other: [] };
         const activeRecurring = adult.extraIncomeLabels || [];
         const archivedRecurring = Object.entries(incomeBlock.recurring || {})
@@ -964,7 +1000,7 @@
         card.innerHTML = `
           <summary>
             <span>
-              <strong>${escapeHtml(adult.name)}${archivedAdult ? ' · Histórico' : ''}</strong>
+              <strong>${escapeHtml(adult.name)} · ingresos y gastos${archivedAdult ? ' · Histórico' : ''}</strong>
               <small>Ingresos ${formatCurrency(totalAdultIncome)} · Gastos ${formatCurrency(personalExpenseTotal)}</small>
             </span>
           </summary>
@@ -1044,11 +1080,10 @@
         const card = document.createElement('details');
         card.className = 'workspace-accordion person-card';
         card.setAttribute('data-mobile-collapsed', '');
-        card.open = true;
         card.innerHTML = `
           <summary>
             <span>
-              <strong>${escapeHtml(child.name)}${archivedChild ? ' · Histórico' : ''}</strong>
+              <strong>${escapeHtml(child.name)} · gastos${archivedChild ? ' · Histórico' : ''}</strong>
               <small>${escapeHtml(child.note || 'Dependiente')} · Gastos ${formatCurrency(sumList(state.form.expenses.children[child.id] || []))}</small>
             </span>
           </summary>
@@ -2160,7 +2195,7 @@ async function addHistoricalInvestment() {
       };
     }
 
-    function renderMovementToggle(container, listKey, hiddenCount) {
+    function renderMovementToggle(container, listKey, hiddenCount, onToggle = null) {
       if (!container || hiddenCount <= 0) return;
       const row = document.createElement('div');
       row.className = 'compact-toggle-row';
@@ -2172,10 +2207,98 @@ async function addHistoricalInvestment() {
       btn.addEventListener('click', () => {
         window.homeflowExpandedLists ||= {};
         window.homeflowExpandedLists[listKey] = !expanded;
-        renderInvestmentsTab();
+        if (onToggle) onToggle();
+        else renderInvestmentsTab();
       });
       row.appendChild(btn);
       container.appendChild(row);
+    }
+
+    function renderActiveDepositList(deposits, todayDevice) {
+      const list = document.getElementById('deposit-list');
+      if (!list) return;
+      const activeDeposits = deposits.filter(isDepositActive);
+      list.innerHTML = '';
+      if (!activeDeposits.length) {
+        list.className = 'dynamic-list';
+        list.innerHTML = '<div class="empty-box">No hay depósitos activos.</div>';
+        return;
+      }
+
+      const getDepositPriority = (deposit) => {
+        if (deposit.matured) return 0;
+        if (deposit.dueToday || deposit.endingSoon) return 1;
+        return 2;
+      };
+      const orderedDeposits = activeDeposits
+        .map((deposit) => ({
+          ...deposit,
+          ...calculateDepositEstimate(
+            deposit.amount,
+            deposit.rate,
+            deposit.start,
+            deposit.durationMonths || deposit.months || 1,
+            todayDevice
+          )
+        }))
+        .sort((a, b) => {
+          const priorityDiff = getDepositPriority(a) - getDepositPriority(b);
+          if (priorityDiff !== 0) return priorityDiff;
+          if (a.matured && b.matured) return String(b.end || '').localeCompare(String(a.end || ''));
+          return String(a.end || '').localeCompare(String(b.end || ''));
+        });
+
+      list.className = 'compact-list';
+      const visibleDeposits = getVisibleMovementItems(orderedDeposits, 'deposit-list', 3);
+      visibleDeposits.items.forEach((deposit) => {
+        const depositIndex = deposits.findIndex(item => item.id === deposit.id);
+        if (depositIndex < 0) return;
+        Object.assign(deposits[depositIndex], deposit);
+        const row = document.createElement('div');
+        const depositStateClass = deposit.matured
+          ? 'deposit-matured'
+          : ((deposit.endingSoon || deposit.dueToday) ? 'deposit-urgent' : 'deposit-active');
+        row.className = `compact-row ${depositStateClass}`.trim();
+        const badgeText = deposit.matured ? 'Vencido' : (deposit.dueToday ? 'Vence hoy' : `Quedan ${deposit.daysRemaining} días`);
+        const statusRibbon = deposit.matured ? '<div class="deposit-status-ribbon">VENCIDO</div>' : '';
+        row.innerHTML = `
+          <div class="compact-row-main">
+            ${statusRibbon}
+            <div class="compact-row-title">${escapeHtml(deposit.name)}</div>
+            <div class="compact-row-subtitle">${escapeHtml(deposit.bank)} · ${deposit.start} → ${deposit.end}</div>
+            <div class="deposit-metrics">
+              <span>Capital <strong>${formatCurrency(deposit.amount)}</strong></span>
+              <span>Interés neto <strong>${formatCurrency(deposit.interest || 0)}</strong></span>
+              <span>Total <strong>${formatCurrency(deposit.finalAmount)}</strong></span>
+            </div>
+          </div>
+          <div class="compact-row-actions">
+            <span class="badge ${deposit.matured ? 'good' : ((deposit.endingSoon || deposit.dueToday) ? 'warn' : 'info')}">${badgeText}</span>
+            ${deposit.matured ? '<button class="btn btn-soft btn-inline" data-close-deposit>Marcar como cobrado</button>' : ''}
+            <button class="btn btn-danger btn-inline" data-delete-deposit>Eliminar</button>
+          </div>
+        `;
+        row.querySelector('[data-delete-deposit]').addEventListener('click', async () => {
+          const confirmedDelete = confirm(`¿Seguro que quieres eliminar el depósito "${deposit.name}"?`);
+          if (!confirmedDelete) return;
+          deposits.splice(depositIndex, 1);
+          await storageAdapter.saveProfile(state.profile);
+          await storageAdapter.saveDeposits(deposits);
+          await renderInvestmentsTab();
+        });
+        row.querySelector('[data-close-deposit]')?.addEventListener('click', async () => {
+          const confirmedClose = confirm(`¿Marcar "${deposit.name}" como cobrado? Desaparecerá del patrimonio y su interés neto quedará registrado en ${new Date().getFullYear()}.`);
+          if (!confirmedClose) return;
+          await closeDeposit(deposit.id);
+        });
+        list.appendChild(row);
+      });
+      renderMovementToggle(
+        list,
+        'deposit-list',
+        visibleDeposits.hiddenCount,
+        () => renderActiveDepositList(deposits, todayDevice)
+      );
     }
 
     async function renderInvestmentsTab() {
@@ -2200,113 +2323,11 @@ async function addHistoricalInvestment() {
       todayDevice.setHours(12, 0, 0, 0);
       const depositTodayNote = document.getElementById('deposit-today-note');
       if (depositTodayNote) depositTodayNote.textContent = `Cálculo hecho con la fecha actual del dispositivo: ${todayDevice.toLocaleDateString('es-ES')}`;
-      const list = document.getElementById('deposit-list');
-      if (!list) return;
       const deposits = currentDeposits();
-      const activeDeposits = deposits.filter(isDepositActive);
-      list.innerHTML = '';
-      if (!activeDeposits.length) {
-        list.innerHTML = '<div class="empty-box">No hay depósitos activos.</div>';
-      } else {
-        list.className = 'compact-list';
-        const getDepositPriority = (deposit) => {
-          if (deposit.matured) return 0;
-          if (deposit.dueToday || deposit.endingSoon) return 1;
-          return 2;
-        };
-        const orderedDeposits = [...activeDeposits]
-          .map((deposit) => {
-            const recalculated = calculateDepositEstimate(deposit.amount, deposit.rate, deposit.start, deposit.durationMonths || deposit.months || 1, todayDevice);
-            return { ...deposit, ...recalculated };
-          })
-          .sort((a, b) => {
-            const priorityDiff = getDepositPriority(a) - getDepositPriority(b);
-            if (priorityDiff !== 0) return priorityDiff;
-            if (a.matured && b.matured) {
-              return String(b.end || '').localeCompare(String(a.end || ''));
-            }
-            return String(a.end || '').localeCompare(String(b.end || ''));
-          });
-        const visibleDeposits = getVisibleMovementItems(orderedDeposits, 'deposit-list', 3);
-        visibleDeposits.items.forEach((deposit) => {
-          const depositIndex = deposits.findIndex(item => item.id === deposit.id);
-          Object.assign(deposits[depositIndex], deposit);
-          const row = document.createElement('div');
-          const depositStateClass = deposit.matured
-            ? 'deposit-matured'
-            : ((deposit.endingSoon || deposit.dueToday) ? 'deposit-urgent' : 'deposit-active');
-          row.className = `compact-row ${depositStateClass}`.trim();
-          const badgeText = deposit.matured ? 'Vencido' : (deposit.dueToday ? 'Vence hoy' : `Quedan ${deposit.daysRemaining} días`);
-          const statusRibbon = deposit.matured
-            ? '<div class="deposit-status-ribbon">VENCIDO</div>'
-            : '';
-          const secondaryNote = deposit.matured
-            ? ` · Vencido hace ${Math.max(1, deposit.overdueDays || 0)} días`
-            : (deposit.dueToday ? ' · Vence hoy' : ` · Quedan ${deposit.daysRemaining} días`);
-          row.innerHTML = `
-            <div class="compact-row-main">
-              ${statusRibbon}
-              <div class="compact-row-title">${escapeHtml(deposit.name)}</div>
-              <div class="compact-row-subtitle">${escapeHtml(deposit.bank)} · ${deposit.start} → ${deposit.end} · Capital ${formatCurrency(deposit.amount)} · Interés neto ${formatCurrency(deposit.interest || 0)} · Total ${formatCurrency(deposit.finalAmount)}${secondaryNote}</div>
-            </div>
-            <div class="compact-row-actions">
-              <span class="badge ${deposit.matured ? 'good' : ((deposit.endingSoon || deposit.dueToday) ? 'warn' : 'info')}">${badgeText}</span>
-              ${deposit.matured ? '<button class="btn btn-soft btn-inline" data-close-deposit>Marcar como cobrado</button>' : ''}
-              <button class="btn btn-danger btn-inline" data-delete-deposit>Eliminar</button>
-            </div>
-          `;
-          row.querySelector('[data-delete-deposit]').addEventListener('click', async () => {
-            const confirmedDelete = confirm(`¿Seguro que quieres eliminar el depósito "${deposit.name}"?`);
-            if (!confirmedDelete) return;
-            deposits.splice(depositIndex, 1);
-            await storageAdapter.saveProfile(state.profile);
-            await storageAdapter.saveDeposits(deposits);
-            renderInvestmentsTab();
-          });
-          const closeBtn = row.querySelector('[data-close-deposit]');
-          if (closeBtn) {
-            closeBtn.addEventListener('click', async () => {
-              const confirmedClose = confirm(`¿Marcar "${deposit.name}" como cobrado? Desaparecerá del patrimonio y su interés neto quedará registrado en ${new Date().getFullYear()}.`);
-              if (!confirmedClose) return;
-              await closeDeposit(deposit.id);
-            });
-          }
-          list.appendChild(row);
-        });
-        renderMovementToggle(list, 'deposit-list', visibleDeposits.hiddenCount);
-      }
+      renderActiveDepositList(deposits, todayDevice);
       renderDepositInterestByYear(deposits);
 
       const aggregated = await getAggregatedMonthlyInvestments();
-      const aggregatedContainer = document.getElementById('aggregated-monthly-investment-list');
-      if (aggregatedContainer) {
-        aggregatedContainer.innerHTML = '';
-        aggregatedContainer.className = 'compact-list';
-        const aggregatedMovements = aggregated.rows
-          .filter(item => ['funds', 'fixed'].includes(getInvestmentCategory(item.type)))
-          .sort((a, b) => String(b.period).localeCompare(String(a.period)));
-        if (!aggregatedMovements.length) {
-          aggregatedContainer.innerHTML = '<div class="empty-box">Todavía no has añadido renta variable o renta fija en la calculadora mensual.</div>';
-        } else {
-          const visibleAgg = getVisibleMovementItems(aggregatedMovements, 'aggregated-monthly-investment-list', 3);
-          visibleAgg.items.forEach(item => {
-            const row = document.createElement('div');
-            row.className = 'compact-row';
-            row.innerHTML = `
-              <div class="compact-row-main">
-                <div class="compact-row-title">${escapeHtml(item.name)}</div>
-                <div class="compact-row-subtitle">${formatPeriod(item.period)} · ${escapeHtml(item.type || 'Inversión')} · ${escapeHtml(item.owner || 'Hogar')}</div>
-              </div>
-              <div class="compact-row-actions">
-                <span class="compact-row-amount">${formatCurrency(item.amount)}</span>
-              </div>
-            `;
-            aggregatedContainer.appendChild(row);
-          });
-          renderMovementToggle(aggregatedContainer, 'aggregated-monthly-investment-list', visibleAgg.hiddenCount);
-        }
-      }
-
       const ownerBreakdownContainer = document.getElementById('investments-by-owner');
       const ownerBreakdown = buildInvestmentOwnerBreakdown(aggregated.rows, deposits);
       if (ownerBreakdownContainer) {
@@ -2578,6 +2599,7 @@ async function addHistoricalInvestment() {
         renderMonthlyArea();
         renderMonthlySummary();
       });
+      renderHistoricalInvestmentList();
     }
 
     function renderEditableList(containerId, list, labelFn, onRemove) {
@@ -3120,6 +3142,7 @@ async function addHistoricalInvestment() {
 
     function init() {
       populatePeriodSelectors();
+      initTheme();
       bindTabs();
       bindActions();
       bindAccordionBehavior();

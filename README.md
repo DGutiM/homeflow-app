@@ -21,9 +21,11 @@ Aplicación web personal para registrar ingresos, gastos, inversiones, depósito
 
 ## Interfaz
 
-- Mes, histórico, inversiones y ajustes usan bloques desplegables.
+- Mes, histórico, inversiones y ajustes usan bloques cerrados por defecto.
 - En móvil, el histórico se muestra como tarjetas legibles en vez de una tabla comprimida.
-- La acción de guardar el mes queda accesible sobre la navegación inferior.
+- Acceso y cambio de tema están integrados en la cabecera compacta.
+- El patrimonio inicial se configura desde Ajustes.
+- Los depósitos se despliegan localmente sin reconstruir toda la pestaña.
 - La calculadora de interés compuesto compara escenarios, inflación, valor real y objetivo.
 
 ## Desarrollo

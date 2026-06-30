@@ -26,13 +26,14 @@
 ## Etapa 3 · Interfaz móvil
 
 - Navegación inferior fija con cinco secciones.
-- Cabecera compacta en pantallas pequeñas.
-- Bloques desplegables para gastos comunes, inversiones, Diego, Itxaso, Iago y totales.
+- Cabecera compacta con acceso y tema visibles.
+- Bloques cerrados por defecto para gastos comunes, inversiones, Diego, Itxaso, Iago y totales.
 - Histórico mensual en tarjetas, manteniendo las tablas completas en escritorio.
 - Inversiones y ajustes organizados en secciones desplegables.
 - KPI en dos columnas para reducir desplazamiento vertical.
 - Formularios en una columna y objetivos táctiles de al menos 44 píxeles.
-- Acción de guardado accesible sobre la navegación inferior.
+- Período compacto y guardado al final del formulario, sin tapar contenido.
+- Despliegue local de listas largas de depósitos, sin repetir consultas a Firebase.
 
 ## Etapa 4 · Simplificación técnica
 
