@@ -56,6 +56,7 @@
       merged.extraFixedExpenseLabels = Array.isArray(merged.extraFixedExpenseLabels) ? merged.extraFixedExpenseLabels : [];
       merged.fixedIncomePositions = Array.isArray(merged.fixedIncomePositions) ? merged.fixedIncomePositions : [];
       merged.investmentPositions = Array.isArray(merged.investmentPositions) ? merged.investmentPositions : [];
+      merged.savingsAccounts = Array.isArray(merged.savingsAccounts) ? merged.savingsAccounts : [];
       merged.deposits = (Array.isArray(merged.deposits) ? merged.deposits : [])
         .map(item => HomeFlowCore.normalizeDepositLifecycle(item));
       merged.archivedAdults = (merged.archivedAdults || []).map(normalizeAdult).filter(adult => adult.name);
@@ -88,6 +89,7 @@
         },
         fixedIncomePositions: [],
         investmentPositions: [],
+        savingsAccounts: [],
         investmentTransfers: [],
         deposits: [],
         cashManualEntries: [],
@@ -451,6 +453,11 @@
       return state.profile.investmentPositions;
     }
 
+    function currentSavingsAccounts() {
+      if (!Array.isArray(state.profile.savingsAccounts)) state.profile.savingsAccounts = [];
+      return state.profile.savingsAccounts;
+    }
+
     function getFundMonthlyInvestments(list = []) {
       return (list || []).filter(item => getInvestmentCategory(item?.type) === 'funds');
     }
@@ -492,6 +499,22 @@
         btn.addEventListener('click', () => {
           activateTab(btn.dataset.tab);
         });
+      });
+    }
+
+    function getOpenAccordionKeys(root) {
+      if (!root) return new Set();
+      return new Set(
+        Array.from(root.querySelectorAll('details[data-accordion-key][open]'))
+          .map(details => details.dataset.accordionKey)
+          .filter(Boolean)
+      );
+    }
+
+    function restoreOpenAccordionKeys(root, openKeys) {
+      if (!root || !openKeys?.size) return;
+      root.querySelectorAll('details[data-accordion-key]').forEach(details => {
+        if (openKeys.has(details.dataset.accordionKey)) details.open = true;
       });
     }
 
@@ -566,6 +589,7 @@
       document.getElementById('export-history').addEventListener('click', exportHistoryExcel);
       document.getElementById('export-pdf').addEventListener('click', exportHistoryPDF);
       document.getElementById('add-deposit').addEventListener('click', addDeposit);
+      document.getElementById('add-savings-account')?.addEventListener('click', addSavingsAccount);
       document.getElementById('add-historical-investment')?.addEventListener('click', addHistoricalInvestment);
       document.getElementById('save-housing-settings')?.addEventListener('click', saveHousingSettings);
       document.getElementById('add-housing-extra')?.addEventListener('click', addHousingExtraPayment);
@@ -987,6 +1011,7 @@
     function renderPersonCards() {
       const row = document.getElementById('person-cards-row');
       if (!row) return;
+      const openAccordionKeys = getOpenAccordionKeys(row);
       row.innerHTML = '';
 
       getLoadedAdults().forEach(adult => {
@@ -994,6 +1019,7 @@
         const card = document.createElement('details');
         card.className = 'workspace-accordion person-card';
         card.setAttribute('data-mobile-collapsed', '');
+        card.dataset.accordionKey = `adult-${adult.id}`;
         const incomeBlock = state.form.incomes.adults[adult.id] || { mainFixed: 0, mainLabel: adult.mainIncomeLabel || 'Ingreso principal', recurring: {}, other: [] };
         const activeRecurring = adult.extraIncomeLabels || [];
         const archivedRecurring = Object.entries(incomeBlock.recurring || {})
@@ -1088,6 +1114,7 @@
         const card = document.createElement('details');
         card.className = 'workspace-accordion person-card';
         card.setAttribute('data-mobile-collapsed', '');
+        card.dataset.accordionKey = `child-${child.id}`;
         card.innerHTML = `
           <summary>
             <span>
@@ -1138,6 +1165,7 @@
 
       bindPersonCards();
       bindAccordionBehavior(row);
+      restoreOpenAccordionKeys(row, openAccordionKeys);
     }
 
     function bindPersonCards() {
@@ -1431,6 +1459,7 @@
       renderHistoryTable(rows);
       renderHistoryCharts(rows);
       renderHistoryIncomeBreakdown(rows);
+      renderHistoricalPersonalSavings(rows);
       renderHistoryInvestments(rows);
     }
 
@@ -1463,6 +1492,101 @@
       setText('hist-total-savings-total', formatCurrency(cumulativeTotalSavings));
       setText('hist-average-rate', formatPercent(avgRate));
       setText('hist-count', String(rows.length));
+    }
+
+    function renderHistoricalPersonalSavings(rows) {
+      const container = document.getElementById('history-person-savings');
+      const title = document.getElementById('history-person-savings-title');
+      if (!container) return;
+      const currentYear = String(new Date().getFullYear());
+      if (title) title.textContent = `Ahorro por persona · ${currentYear}`;
+      const annualRows = rows.filter(row => String(row.period).startsWith(`${currentYear}-`));
+      if (!annualRows.length) {
+        container.innerHTML = `<div class="empty-box">Todavía no hay meses guardados de ${currentYear}.</div>`;
+        return;
+      }
+
+      const totalsByAdult = new Map();
+      annualRows.forEach(row => {
+        const context = getProfileContextForData(row.data, state.profile);
+        const adults = context.adults || [];
+        if (!adults.length) return;
+        const adultByOwnerName = new Map(adults.map(adult => [String(adult.name || '').trim().toLocaleLowerCase('es'), adult]));
+        const directInvestments = new Map(adults.map(adult => [adult.id, 0]));
+        let householdInvestments = 0;
+        getFundMonthlyInvestments(row.data?.expenses?.monthlyInvestments || []).forEach(item => {
+          const ownerKey = String(item.owner || 'Hogar').trim().toLocaleLowerCase('es');
+          const adult = adultByOwnerName.get(ownerKey);
+          if (adult) {
+            directInvestments.set(adult.id, num(directInvestments.get(adult.id)) + num(item.amount));
+          } else {
+            householdInvestments += num(item.amount);
+          }
+        });
+
+        const allocations = HomeFlowCore.allocateSavingsByAdult(
+          adults.map(adult => ({
+            id: adult.id,
+            name: adult.name,
+            income: row.totals.incomeAdults.find(item => item.adult.id === adult.id)?.total || 0,
+            personalExpenses: row.totals.adultsExpenses.find(item => item.adult.id === adult.id)?.total || 0,
+            longTermInvestment: directInvestments.get(adult.id) || 0
+          })),
+          row.totals.commonExpenses + row.totals.dependentExpenses,
+          householdInvestments
+        );
+
+        allocations.forEach(item => {
+          const current = totalsByAdult.get(item.id) || {
+            id: item.id,
+            name: item.name,
+            income: 0,
+            allocatedLivingExpenses: 0,
+            longTermInvestment: 0,
+            availableSavings: 0,
+            totalSavings: 0,
+            months: 0
+          };
+          current.name = item.name || current.name;
+          current.income += item.income;
+          current.allocatedLivingExpenses += item.allocatedLivingExpenses;
+          current.longTermInvestment += item.longTermInvestment;
+          current.availableSavings += item.availableSavings;
+          current.totalSavings += item.totalSavings;
+          current.months += 1;
+          totalsByAdult.set(item.id, current);
+        });
+      });
+
+      const personalTotals = Array.from(totalsByAdult.values()).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+      if (!personalTotals.length) {
+        container.innerHTML = `<div class="empty-box">No hay adultos con datos en ${currentYear}.</div>`;
+        return;
+      }
+      container.innerHTML = personalTotals.map(item => {
+        const totalRate = item.income > 0 ? (item.totalSavings / item.income) * 100 : 0;
+        return `
+          <article class="category-card person-savings-card">
+            <div class="section-title">
+              <div>
+                <h3>${escapeHtml(item.name)}</h3>
+                <span class="muted">${item.months} ${item.months === 1 ? 'mes guardado' : 'meses guardados'} en ${currentYear}</span>
+              </div>
+              <span class="badge ${item.totalSavings >= 0 ? 'good' : 'warn'}">${formatPercent(totalRate)}</span>
+            </div>
+            <div class="personal-savings-total">
+              <span>Ahorro total del año</span>
+              <strong>${formatCurrency(item.totalSavings)}</strong>
+            </div>
+            <div class="personal-savings-grid">
+              <div><span>Ingresos</span><strong>${formatCurrency(item.income)}</strong></div>
+              <div><span>Gastos asignados</span><strong>${formatCurrency(item.allocatedLivingExpenses)}</strong></div>
+              <div><span>Invertido a largo plazo</span><strong>${formatCurrency(item.longTermInvestment)}</strong></div>
+              <div><span>Ahorro disponible</span><strong>${formatCurrency(item.availableSavings)}</strong></div>
+            </div>
+          </article>
+        `;
+      }).join('');
     }
 
     function renderHistoryTable(rows) {
@@ -1905,6 +2029,111 @@
       };
     }
 
+    async function addSavingsAccount() {
+      const name = document.getElementById('savings-account-name')?.value.trim();
+      const owner = document.getElementById('savings-account-owner')?.value || 'Hogar';
+      const balance = num(document.getElementById('savings-account-balance')?.value || 0);
+      const annualRate = num(document.getElementById('savings-account-rate')?.value || 0);
+      const status = document.getElementById('savings-account-status');
+      if (!name || balance <= 0) {
+        if (status) {
+          status.style.color = 'var(--bad)';
+          status.textContent = 'Completa el nombre y un saldo mayor que cero.';
+        }
+        return;
+      }
+      currentSavingsAccounts().push({
+        id: createId('savings'),
+        name,
+        owner,
+        balance: round2(balance),
+        annualRate: round2(annualRate),
+        updatedAt: new Date().toISOString()
+      });
+      try {
+        await storageAdapter.saveProfile(state.profile);
+        document.getElementById('savings-account-name').value = '';
+        document.getElementById('savings-account-owner').value = 'Hogar';
+        document.getElementById('savings-account-balance').value = '';
+        document.getElementById('savings-account-rate').value = '';
+        if (status) {
+          status.style.color = 'var(--good)';
+          status.textContent = 'Cuenta remunerada añadida.';
+        }
+        await renderInvestmentsTab();
+      } catch (error) {
+        console.error(error);
+        currentSavingsAccounts().pop();
+        if (status) {
+          status.style.color = 'var(--bad)';
+          status.textContent = error?.message || 'No se pudo guardar la cuenta.';
+        }
+      }
+    }
+
+    function renderSavingsAccounts() {
+      const container = document.getElementById('savings-account-list');
+      if (!container) return;
+      const accounts = currentSavingsAccounts();
+      if (!accounts.length) {
+        container.innerHTML = '<div class="empty-box">Todavía no hay cuentas remuneradas.</div>';
+        return;
+      }
+      container.innerHTML = accounts.map(account => {
+        const projection = HomeFlowCore.calculateSavingsAccountProjection(account.balance, account.annualRate);
+        const accountId = escapeHtml(account.id);
+        return `
+          <article class="category-card savings-account-item">
+            <div class="section-title">
+              <div>
+                <h3>${escapeHtml(account.name || 'Cuenta remunerada')}</h3>
+                <span class="muted">${escapeHtml(account.owner || 'Hogar')} · ${formatPercent(projection.annualRate)} TAE</span>
+              </div>
+              <button class="btn btn-danger btn-inline" type="button" data-delete-savings-account="${accountId}">Eliminar</button>
+            </div>
+            <div class="field-row">
+              <div>
+                <label for="savings-balance-${accountId}">Saldo actual (€)</label>
+                <input id="savings-balance-${accountId}" type="number" min="0" step="0.01" value="${projection.balance}" />
+              </div>
+              <div>
+                <label for="savings-rate-${accountId}">TAE (%)</label>
+                <input id="savings-rate-${accountId}" type="number" min="0" step="0.01" value="${projection.annualRate}" />
+              </div>
+            </div>
+            <div class="savings-account-projection">
+              <div><span>Interés mensual estimado</span><strong>${formatCurrency(projection.monthlyInterest)}</strong></div>
+              <div><span>Interés anual estimado</span><strong>${formatCurrency(projection.annualInterest)}</strong></div>
+            </div>
+            <button class="btn btn-soft" type="button" data-save-savings-account="${accountId}">Actualizar saldo y TAE</button>
+          </article>
+        `;
+      }).join('');
+
+      container.querySelectorAll('[data-save-savings-account]').forEach(button => {
+        button.addEventListener('click', async () => {
+          const account = accounts.find(item => item.id === button.dataset.saveSavingsAccount);
+          if (!account) return;
+          account.balance = round2(num(document.getElementById(`savings-balance-${account.id}`)?.value || 0));
+          account.annualRate = round2(num(document.getElementById(`savings-rate-${account.id}`)?.value || 0));
+          account.updatedAt = new Date().toISOString();
+          await storageAdapter.saveProfile(state.profile);
+          await renderInvestmentsTab();
+        });
+      });
+      container.querySelectorAll('[data-delete-savings-account]').forEach(button => {
+        button.addEventListener('click', async () => {
+          const index = accounts.findIndex(item => item.id === button.dataset.deleteSavingsAccount);
+          if (index < 0) return;
+          const account = accounts[index];
+          if (!confirm(`¿Eliminar la cuenta remunerada "${account.name}"?`)) return;
+          accounts.splice(index, 1);
+          await storageAdapter.saveProfile(state.profile);
+          await renderInvestmentsTab();
+        });
+      });
+    }
+
     async function addDeposit() {
       const name = document.getElementById('deposit-name').value.trim();
       const bank = document.getElementById('deposit-bank').value.trim();
@@ -2030,7 +2259,7 @@ async function addHistoricalInvestment() {
     }
 
 
-    function buildInvestmentOwnerBreakdown(aggregatedRows, deposits) {
+    function buildInvestmentOwnerBreakdown(aggregatedRows, deposits, savingsAccounts = []) {
       const ownerMap = new Map();
 
       const ensureOwner = (owner) => {
@@ -2042,12 +2271,14 @@ async function addHistoricalInvestment() {
             funds: 0,
             fixedBase: 0,
             fixed: 0,
+            savingsAccounts: 0,
             deposits: 0,
             salesToCash: 0,
             transfersToFunds: 0,
             total: 0,
             fundItems: [],
             fixedItems: [],
+            savingsAccountItems: [],
             depositItems: [],
             saleItems: [],
             fundsTransferItems: []
@@ -2086,6 +2317,12 @@ async function addHistoricalInvestment() {
         bucket.depositItems.push(item);
       });
 
+      savingsAccounts.forEach(item => {
+        const bucket = ensureOwner(item.owner || 'Hogar');
+        bucket.savingsAccounts += num(item.balance);
+        bucket.savingsAccountItems.push(item);
+      });
+
       getSavedFixedIncomeSales().forEach(item => {
         const bucket = ensureOwner(item.owner || 'Hogar');
         bucket.salesToCash += num(item.amount);
@@ -2103,7 +2340,7 @@ async function addHistoricalInvestment() {
           const fixedOut = bucket.salesToCash + bucket.transfersToFunds;
           bucket.fixed = Math.max(0, bucket.fixedBase - fixedOut);
           bucket.funds = bucket.fundsBase + bucket.transfersToFunds;
-          bucket.total = bucket.funds + bucket.fixed + bucket.deposits;
+          bucket.total = bucket.funds + bucket.fixed + bucket.savingsAccounts + bucket.deposits;
           return bucket;
         })
         .filter(bucket => bucket.total > 0 || bucket.salesToCash > 0 || bucket.transfersToFunds > 0)
@@ -2353,10 +2590,12 @@ async function addHistoricalInvestment() {
       const deposits = currentDeposits();
       renderActiveDepositList(deposits, todayDevice);
       renderDepositInterestByYear(deposits);
+      const savingsAccounts = currentSavingsAccounts();
+      renderSavingsAccounts();
 
       const aggregated = await getAggregatedMonthlyInvestments();
       const ownerBreakdownContainer = document.getElementById('investments-by-owner');
-      const ownerBreakdown = buildInvestmentOwnerBreakdown(aggregated.rows, deposits);
+      const ownerBreakdown = buildInvestmentOwnerBreakdown(aggregated.rows, deposits, savingsAccounts);
       if (ownerBreakdownContainer) {
         ownerBreakdownContainer.innerHTML = '';
         if (!ownerBreakdown.length) {
@@ -2375,9 +2614,10 @@ async function addHistoricalInvestment() {
                   <div class="muted">Total acumulado: ${formatCurrency(owner.total)}</div>
                 </div>
               </div>
-              <div class="kpi-grid" style="grid-template-columns: repeat(4, minmax(0,1fr)); margin-bottom:16px;">
+              <div class="kpi-grid" style="grid-template-columns: repeat(5, minmax(0,1fr)); margin-bottom:16px;">
                 <div class="kpi"><div class="kpi-label">Renta fija</div><div class="kpi-value">${formatCurrency(owner.fixed)}</div></div>
                 <div class="kpi info"><div class="kpi-label">Renta variable</div><div class="kpi-value">${formatCurrency(owner.funds)}</div></div>
+                <div class="kpi info"><div class="kpi-label">Cuentas</div><div class="kpi-value">${formatCurrency(owner.savingsAccounts)}</div></div>
                 <div class="kpi info"><div class="kpi-label">Depósitos</div><div class="kpi-value">${formatCurrency(owner.deposits)}</div></div>
                 <div class="kpi positive"><div class="kpi-label">Total</div><div class="kpi-value">${formatCurrency(owner.total)}</div></div>
               </div>
@@ -2482,12 +2722,14 @@ async function addHistoricalInvestment() {
       const globalFixedToFunds = getSavedFixedIncomeTransfersToFundsTotal();
       const globalFunds = globalFundsBase + globalFixedToFunds;
       const globalFixed = Math.max(0, globalFixedBase - globalFixedSold - globalFixedToFunds);
+      const globalSavingsAccounts = savingsAccounts.reduce((acc, item) => acc + num(item.balance), 0);
       const globalDeposits = deposits.filter(isDepositActive).reduce((acc, item) => acc + num(item.amount), 0);
       const globalHousing = housingSummary.paid;
-      const globalTotal = globalFunds + globalFixed + globalDeposits + globalHousing;
+      const globalTotal = globalFunds + globalFixed + globalSavingsAccounts + globalDeposits + globalHousing;
       state.investmentTotals = {
         variable: round2(globalFunds),
         fixed: round2(globalFixed),
+        savingsAccounts: round2(globalSavingsAccounts),
         deposits: round2(globalDeposits),
         housing: round2(globalHousing),
         total: round2(globalTotal)
@@ -2495,17 +2737,18 @@ async function addHistoricalInvestment() {
 
       setText('investments-total-funds', formatCurrency(globalFunds));
       setText('investments-total-fixed', formatCurrency(globalFixed));
+      setText('investments-total-savings-accounts', formatCurrency(globalSavingsAccounts));
       setText('investments-total-deposits', formatCurrency(globalDeposits));
       setText('investments-total-housing', formatCurrency(globalHousing));
       setText('investments-total-all', formatCurrency(globalTotal));
-      renderInvestmentsDistributionChart(globalFunds, globalFixed, globalDeposits, globalHousing);
+      renderInvestmentsDistributionChart(globalFunds, globalFixed, globalSavingsAccounts, globalDeposits, globalHousing);
       renderMonthlySummary();
     }
 
-    function renderInvestmentsDistributionChart(funds, fixed, deposits, housing) {
-      const labels = ['Renta variable', 'Renta fija', 'Depósitos', 'Vivienda'];
-      const colors = ['#2563eb', '#0f766e', '#f59e0b', '#8b5cf6'];
-      const rawValues = [round2(funds), round2(fixed), round2(deposits), round2(housing)];
+    function renderInvestmentsDistributionChart(funds, fixed, savingsAccounts, deposits, housing) {
+      const labels = ['Renta variable', 'Renta fija', 'Cuentas remuneradas', 'Depósitos', 'Vivienda'];
+      const colors = ['#2563eb', '#0f766e', '#06b6d4', '#f59e0b', '#8b5cf6'];
+      const rawValues = [round2(funds), round2(fixed), round2(savingsAccounts), round2(deposits), round2(housing)];
       const total = rawValues.reduce((acc, value) => acc + value, 0);
       const hasAnyValue = rawValues.some(value => value > 0);
       buildChart('investments-distribution-chart', {
@@ -2513,7 +2756,7 @@ async function addHistoricalInvestment() {
         data: {
           labels,
           datasets: [{
-            data: hasAnyValue ? rawValues : [1, 1, 1, 1],
+            data: hasAnyValue ? rawValues : [1, 1, 1, 1, 1],
             backgroundColor: colors,
             borderWidth: 0
           }]
@@ -2701,7 +2944,7 @@ async function addHistoricalInvestment() {
     }
 
     function updateOwnerSelectOptions() {
-      ['deposit-owner', 'invest-owner', 'historical-investment-owner'].forEach(id => {
+      ['deposit-owner', 'invest-owner', 'historical-investment-owner', 'savings-account-owner'].forEach(id => {
         const select = document.getElementById(id);
         if (!select) return;
         const current = select.value || 'Hogar';
@@ -2768,6 +3011,7 @@ async function addHistoricalInvestment() {
         fixedExpenseLabels: structuredClone(state.profile.fixedExpenseLabels || base.fixedExpenseLabels),
         fixedIncomePositions: structuredClone(state.profile.fixedIncomePositions || []),
         investmentPositions: structuredClone(state.profile.investmentPositions || []),
+        savingsAccounts: structuredClone(state.profile.savingsAccounts || []),
         investmentTransfers: structuredClone(state.profile.investmentTransfers || []),
         cashManualEntries: structuredClone(state.profile.cashManualEntries || []),
         extraFixedExpenseLabels: structuredClone(state.profile.extraFixedExpenseLabels || []),
@@ -2800,6 +3044,7 @@ async function addHistoricalInvestment() {
       prepared.extraFixedExpenseLabels ||= structuredClone(state.profile.extraFixedExpenseLabels || []);
       prepared.fixedIncomePositions ||= structuredClone(state.profile.fixedIncomePositions || []);
       prepared.investmentPositions ||= structuredClone(state.profile.investmentPositions || []);
+      prepared.savingsAccounts ||= structuredClone(state.profile.savingsAccounts || []);
       prepared.investmentTransfers ||= structuredClone(state.profile.investmentTransfers || []);
       prepared.cashManualEntries ||= structuredClone(state.profile.cashManualEntries || []);
       prepared.deposits ||= structuredClone(state.profile.deposits || []);
@@ -2983,10 +3228,22 @@ async function addHistoricalInvestment() {
       const incomeRows = ordered.flatMap(([period, data]) => buildIncomeRowsForPeriod(period, data));
       const expenseRows = ordered.flatMap(([period, data]) => buildExpenseRowsForPeriod(period, data));
       const investmentRows = ordered.flatMap(([period, data]) => buildInvestmentRowsForPeriod(period, data));
+      const savingsAccountRows = currentSavingsAccounts().map(account => {
+        const projection = HomeFlowCore.calculateSavingsAccountProjection(account.balance, account.annualRate);
+        return {
+          Cuenta: account.name,
+          Titular: account.owner || 'Hogar',
+          Saldo_Actual: projection.balance,
+          TAE: projection.annualRate,
+          Interes_Mensual_Estimado: projection.monthlyInterest,
+          Interes_Anual_Estimado: projection.annualInterest
+        };
+      });
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), 'Resumen');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(incomeRows), 'Ingresos');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(expenseRows), 'Gastos');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(investmentRows), 'Inversiones');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(savingsAccountRows), 'Cuentas remuneradas');
       XLSX.writeFile(wb, 'HomeFlow3_historico.xlsx');
     }
 
@@ -3055,6 +3312,27 @@ async function addHistoricalInvestment() {
         styles: { fontSize: 9, cellPadding: 6 },
         headStyles: { fillColor: [15, 118, 110] },
         alternateRowStyles: { fillColor: [242, 251, 248] }
+      });
+
+      const savingsAccounts = currentSavingsAccounts().map(item => {
+        const projection = HomeFlowCore.calculateSavingsAccountProjection(item.balance, item.annualRate);
+        return [
+          item.name,
+          item.owner || 'Hogar',
+          formatCurrency(projection.balance),
+          formatPercent(projection.annualRate),
+          formatCurrency(projection.monthlyInterest)
+        ];
+      });
+
+      doc.autoTable({
+        startY: doc.lastAutoTable.finalY + 20,
+        head: [['Cuenta remunerada', 'Titular', 'Saldo', 'TAE', 'Interés mensual estimado']],
+        body: savingsAccounts.length ? savingsAccounts : [['Sin cuentas remuneradas', '', '', '', '']],
+        margin: { left: margin, right: margin },
+        styles: { fontSize: 9, cellPadding: 6 },
+        headStyles: { fillColor: [6, 182, 212] },
+        alternateRowStyles: { fillColor: [239, 250, 252] }
       });
 
       const investments = currentInvestmentPositions().map(item => [

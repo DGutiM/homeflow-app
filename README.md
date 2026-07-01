@@ -17,6 +17,7 @@ Aplicación web personal para registrar ingresos, gastos, inversiones, depósito
 - Las aportaciones mensuales continúan alimentando automáticamente la categoría elegida.
 - Las aportaciones a fondos indexados reducen el **ahorro disponible**, porque se consideran dinero reservado hasta el largo plazo.
 - El **ahorro total** suma el disponible y esas aportaciones, para que invertir no aparezca como si fuera consumo.
+- Histórico muestra el ahorro anual de cada adulto. Los gastos comunes, hijos e inversiones del hogar se reparten a partes iguales; lo personal se asigna a su titular.
 - Guardar de nuevo el mismo período sustituye `AAAA-MM`; no crea otro mes.
 - Un depósito cobrado desaparece del patrimonio y su interés neto se agrupa por año.
 - Los depósitos antiguos marcados con `sentToCash` se migran en memoria a `closed` sin perder información.
@@ -24,11 +25,13 @@ Aplicación web personal para registrar ingresos, gastos, inversiones, depósito
 ## Interfaz
 
 - Mes, histórico, inversiones y ajustes usan bloques cerrados por defecto.
+- Al añadir o eliminar un dato dentro de un bloque, ese desplegable permanece abierto.
 - En móvil, el histórico se muestra como tarjetas legibles en vez de una tabla comprimida.
 - Acceso y cambio de tema están integrados en la cabecera compacta.
 - «Herramientas y seguridad» deja espacio suficiente para desplazarse sin quedar tapado por la navegación móvil.
 - El patrimonio inicial se configura desde Ajustes.
 - Los depósitos se despliegan localmente sin reconstruir toda la pestaña.
+- Las cuentas remuneradas guardan saldo, titular y TAE; se suman al patrimonio y al Rosco Económico, con interés mensual y anual estimados.
 - La calculadora de interés compuesto compara escenarios, inflación, valor real y objetivo.
 
 ## Desarrollo

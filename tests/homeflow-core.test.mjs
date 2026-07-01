@@ -88,4 +88,46 @@ assert.deepEqual(
   }
 );
 
+assert.deepEqual(
+  core.allocateSavingsByAdult([
+    { id: 'diego', name: 'Diego', income: 3000, personalExpenses: 200, longTermInvestment: 400 },
+    { id: 'itxaso', name: 'Itxaso', income: 2500, personalExpenses: 100, longTermInvestment: 200 }
+  ], 2000, 300),
+  [
+    {
+      id: 'diego',
+      name: 'Diego',
+      income: 3000,
+      personalExpenses: 200,
+      sharedLivingExpenses: 1000,
+      allocatedLivingExpenses: 1200,
+      longTermInvestment: 550,
+      availableSavings: 1250,
+      totalSavings: 1800
+    },
+    {
+      id: 'itxaso',
+      name: 'Itxaso',
+      income: 2500,
+      personalExpenses: 100,
+      sharedLivingExpenses: 1000,
+      allocatedLivingExpenses: 1100,
+      longTermInvestment: 350,
+      availableSavings: 1050,
+      totalSavings: 1400
+    }
+  ]
+);
+
+assert.deepEqual(
+  core.calculateSavingsAccountProjection(10000, 3),
+  {
+    balance: 10000,
+    annualRate: 3,
+    monthlyInterest: 24.66,
+    annualInterest: 300,
+    projectedBalanceOneYear: 10300
+  }
+);
+
 console.log('homeflow-core: pruebas correctas');
