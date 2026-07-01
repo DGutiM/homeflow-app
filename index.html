@@ -17,7 +17,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="homeflow-core.js"></script>
-  <link rel="stylesheet" href="styles.css?v=20260630-3" />
+  <link rel="stylesheet" href="styles.css?v=20260701-1" />
 </head>
 <body>
   <div class="app-shell">
@@ -257,6 +257,23 @@
           </div>
         </details>
 
+        <details class="workspace-accordion" data-mobile-collapsed data-accordion-key="history-person-savings">
+          <summary>
+            <span><strong>Ahorro por persona</strong><small>Diego e Itxaso en lo que va de año</small></span>
+          </summary>
+          <div class="accordion-body">
+            <div class="card accordion-inner-card">
+              <div class="section-title">
+                <div>
+                  <h2 id="history-person-savings-title">Ahorro por persona</h2>
+                  <p class="subtle">Los gastos comunes, los gastos de hijos y las inversiones del hogar se reparten a partes iguales entre los adultos de cada mes.</p>
+                </div>
+              </div>
+              <div id="history-person-savings" class="grid grid-2"></div>
+            </div>
+          </div>
+        </details>
+
         <details class="workspace-accordion">
           <summary>
             <span><strong>Meses guardados</strong><small>Abre un mes para corregirlo sin duplicarlo</small></span>
@@ -314,15 +331,16 @@
 
         <details class="workspace-accordion">
           <summary>
-            <span><strong>Resumen global</strong><small>Renta variable, fija, depósitos y vivienda</small></span>
+            <span><strong>Resumen global</strong><small>Fondos, renta fija, cuentas, depósitos y vivienda</small></span>
           </summary>
           <div class="accordion-body">
         <div class="card accordion-inner-card">
           <h2>Resumen global de inversiones</h2>
           <p class="subtle">Primero ves el total del hogar y después el desglose por persona.</p>
-          <div class="kpi-grid" style="grid-template-columns: repeat(5, minmax(0,1fr));">
+          <div class="kpi-grid">
             <div class="kpi info"><div class="kpi-label">Renta variable</div><div class="kpi-value" id="investments-total-funds">0 €</div></div>
             <div class="kpi"><div class="kpi-label">Renta fija</div><div class="kpi-value" id="investments-total-fixed">0 €</div></div>
+            <div class="kpi info"><div class="kpi-label">Cuentas remuneradas</div><div class="kpi-value" id="investments-total-savings-accounts">0 €</div></div>
             <div class="kpi info"><div class="kpi-label">Depósitos</div><div class="kpi-value" id="investments-total-deposits">0 €</div></div>
             <div class="kpi"><div class="kpi-label">Vivienda pagada</div><div class="kpi-value" id="investments-total-housing">0 €</div></div>
             <div class="kpi positive"><div class="kpi-label">Total</div><div class="kpi-value" id="investments-total-all">0 €</div></div>
@@ -338,12 +356,49 @@
           <div class="accordion-body">
         <div class="card accordion-inner-card chart-card chart-highlight">
           <h2>Rosco Económico</h2>
-          <p class="subtle">Vista rápida del peso de renta variable, renta fija, depósitos y vivienda pagada.</p>
+          <p class="subtle">Vista rápida del peso de renta variable, renta fija, cuentas remuneradas, depósitos y vivienda pagada.</p>
           <div class="chart-with-legend">
             <div><canvas id="investments-distribution-chart"></canvas></div>
             <div id="investments-distribution-legend" class="chart-legend-box"></div>
           </div>
         </div>
+          </div>
+        </details>
+
+        <details class="workspace-accordion" data-mobile-collapsed data-accordion-key="savings-accounts">
+          <summary>
+            <span><strong>Cuentas remuneradas</strong><small>Saldo actual, titular y rentabilidad anual</small></span>
+          </summary>
+          <div class="accordion-body">
+            <div class="card accordion-inner-card savings-account-card">
+              <div class="section-title">
+                <div>
+                  <h2>Cuentas remuneradas</h2>
+                  <p class="subtle">Introduce el saldo actual y la TAE. HomeFlow estima el interés mensual, pero no modifica el saldo automáticamente.</p>
+                </div>
+              </div>
+              <div class="field-row-4">
+                <div>
+                  <label for="savings-account-name">Cuenta / entidad</label>
+                  <input id="savings-account-name" type="text" placeholder="Ej. Trade Republic" />
+                </div>
+                <div>
+                  <label for="savings-account-owner">Titular</label>
+                  <select id="savings-account-owner"><option value="Hogar">Hogar</option></select>
+                </div>
+                <div>
+                  <label for="savings-account-balance">Saldo actual (€)</label>
+                  <input id="savings-account-balance" type="number" min="0" step="0.01" />
+                </div>
+                <div>
+                  <label for="savings-account-rate">TAE (%)</label>
+                  <input id="savings-account-rate" type="number" min="0" step="0.01" placeholder="3" />
+                </div>
+                <button class="btn btn-primary" id="add-savings-account">Añadir cuenta</button>
+              </div>
+              <div class="status" id="savings-account-status"></div>
+              <div id="savings-account-list" class="grid grid-2" style="margin-top:16px;"></div>
+            </div>
           </div>
         </details>
 

@@ -36,6 +36,12 @@ assert.match(styles, /body\s*\{[\s\S]*?overflow:\s*visible;/);
 assert.match(html, /id="kpi-total-savings"/);
 assert.match(html, /id="hist-total-savings-total"/);
 assert.match(html, /data-scroll-on-open/);
+assert.match(html, /id="history-person-savings"/);
+assert.match(html, /id="savings-account-list"/);
+assert.match(html, /id="investments-total-savings-accounts"/);
+assert.match(app, /restoreOpenAccordionKeys\(row, openAccordionKeys\)/);
+assert.match(app, /HomeFlowCore\.allocateSavingsByAdult/);
+assert.match(app, /HomeFlowCore\.calculateSavingsAccountProjection/);
 
 const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
 assert.equal(new Set(ids).size, ids.length, 'No debe haber IDs HTML duplicados');

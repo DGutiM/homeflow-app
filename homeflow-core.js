@@ -98,6 +98,46 @@
     };
   }
 
+  function allocateSavingsByAdult(adults, sharedLivingExpenses, householdLongTermInvestment) {
+    const members = Array.isArray(adults) ? adults : [];
+    if (!members.length) return [];
+    const sharedLivingPerAdult = numberValue(sharedLivingExpenses) / members.length;
+    const sharedInvestmentPerAdult = numberValue(householdLongTermInvestment) / members.length;
+    return members.map((adult) => {
+      const income = numberValue(adult?.income);
+      const personalExpenses = numberValue(adult?.personalExpenses);
+      const longTermInvestment = numberValue(adult?.longTermInvestment) + sharedInvestmentPerAdult;
+      const allocatedLivingExpenses = personalExpenses + sharedLivingPerAdult;
+      const savings = calculateSavingsBreakdown(income, allocatedLivingExpenses, longTermInvestment);
+      return {
+        id: adult?.id || '',
+        name: adult?.name || 'Adulto',
+        income: roundMoney(income),
+        personalExpenses: roundMoney(personalExpenses),
+        sharedLivingExpenses: roundMoney(sharedLivingPerAdult),
+        allocatedLivingExpenses: roundMoney(allocatedLivingExpenses),
+        longTermInvestment: savings.longTermInvestment,
+        availableSavings: savings.availableSavings,
+        totalSavings: savings.totalSavings
+      };
+    });
+  }
+
+  function calculateSavingsAccountProjection(balance, annualRate) {
+    const principal = Math.max(0, numberValue(balance));
+    const rate = Math.max(0, numberValue(annualRate));
+    const monthlyRate = Math.pow(1 + (rate / 100), 1 / 12) - 1;
+    const monthlyInterest = roundMoney(principal * monthlyRate);
+    const annualInterest = roundMoney(principal * (rate / 100));
+    return {
+      balance: roundMoney(principal),
+      annualRate: roundMoney(rate),
+      monthlyInterest,
+      annualInterest,
+      projectedBalanceOneYear: roundMoney(principal + annualInterest)
+    };
+  }
+
   function upsertPeriodMap(periods, periodId, data) {
     const next = { ...(periods || {}) };
     next[String(periodId)] = data;
@@ -105,6 +145,8 @@
   }
 
   root.HomeFlowCore = Object.freeze({
+    allocateSavingsByAdult,
+    calculateSavingsAccountProjection,
     calculateSavingsBreakdown,
     getInvestmentCategory,
     groupClosedDepositInterestByYear,
