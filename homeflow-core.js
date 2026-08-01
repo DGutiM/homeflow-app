@@ -48,6 +48,50 @@
     return normalized;
   }
 
+  function getDepositIdentity(deposit) {
+    if (deposit?.id) return `id:${deposit.id}`;
+    return [
+      String(deposit?.name || 'deposito').trim().toLocaleLowerCase('es'),
+      String(deposit?.bank || '').trim().toLocaleLowerCase('es'),
+      String(deposit?.start || ''),
+      roundMoney(deposit?.amount || 0)
+    ].join('|');
+  }
+
+  function getDepositLifecycleTimestamp(deposit) {
+    const value = deposit?.closedAt || deposit?.sentToCashAt || deposit?.updatedAt || deposit?.createdAt || '';
+    const timestamp = Date.parse(value);
+    return Number.isFinite(timestamp) ? timestamp : 0;
+  }
+
+  function mergeDepositSources(...sources) {
+    const depositsById = new Map();
+    sources.flatMap(source => Array.isArray(source) ? source : []).forEach((rawDeposit) => {
+      const deposit = normalizeDepositLifecycle(rawDeposit);
+      const key = getDepositIdentity(deposit);
+      const existing = depositsById.get(key);
+      if (!existing) {
+        depositsById.set(key, deposit);
+        return;
+      }
+
+      const merged = { ...existing, ...deposit };
+      const closedVersions = [existing, deposit]
+        .filter(isDepositClosed)
+        .sort((a, b) => getDepositLifecycleTimestamp(b) - getDepositLifecycleTimestamp(a));
+      if (closedVersions.length) {
+        const closed = closedVersions[0];
+        merged.status = 'closed';
+        merged.closedAt = closed.closedAt || closed.sentToCashAt || existing.closedAt || deposit.closedAt || null;
+        merged.closedInterest = roundMoney(
+          closed.closedInterest ?? closed.interest ?? existing.closedInterest ?? deposit.closedInterest ?? 0
+        );
+      }
+      depositsById.set(key, normalizeDepositLifecycle(merged));
+    });
+    return Array.from(depositsById.values());
+  }
+
   function getDepositInterestYear(deposit) {
     const dateValue = deposit?.closedAt || deposit?.sentToCashAt || deposit?.end || '';
     const yearMatch = String(dateValue).match(/^(\d{4})/);
@@ -71,6 +115,64 @@
       });
 
     return Array.from(grouped.values()).sort((a, b) => String(b.year).localeCompare(String(a.year)));
+  }
+
+  function groupInvestmentInterestByYear(deposits, savingsAccounts) {
+    const events = [];
+    (deposits || [])
+      .map(normalizeDepositLifecycle)
+      .filter(isDepositClosed)
+      .forEach((deposit) => {
+        events.push({
+          id: deposit.id || getDepositIdentity(deposit),
+          sourceType: 'deposit',
+          sourceName: deposit.name || 'Depósito',
+          institution: deposit.bank || '',
+          owner: deposit.owner || 'Hogar',
+          date: deposit.closedAt || deposit.sentToCashAt || deposit.end || '',
+          amount: roundMoney(deposit.closedInterest ?? deposit.interest ?? 0)
+        });
+      });
+
+    (savingsAccounts || []).forEach((account) => {
+      (Array.isArray(account?.interestEntries) ? account.interestEntries : []).forEach((entry) => {
+        events.push({
+          id: entry.id || `${account.id || account.name || 'cuenta'}-${entry.date || ''}-${entry.amount || 0}`,
+          sourceType: 'savings-account',
+          sourceName: account.name || 'Cuenta remunerada',
+          institution: account.name || '',
+          owner: account.owner || 'Hogar',
+          date: entry.date || entry.createdAt || '',
+          amount: roundMoney(entry.amount || 0)
+        });
+      });
+    });
+
+    const grouped = new Map();
+    events.forEach((event) => {
+      const year = getDepositInterestYear({ closedAt: event.date });
+      if (!grouped.has(year)) grouped.set(year, { year, total: 0, depositTotal: 0, savingsAccountTotal: 0, events: [] });
+      const group = grouped.get(year);
+      group.total = roundMoney(group.total + event.amount);
+      if (event.sourceType === 'deposit') group.depositTotal = roundMoney(group.depositTotal + event.amount);
+      else group.savingsAccountTotal = roundMoney(group.savingsAccountTotal + event.amount);
+      group.events.push(event);
+    });
+
+    return Array.from(grouped.values())
+      .map(group => ({ ...group, events: group.events.sort((a, b) => String(b.date).localeCompare(String(a.date))) }))
+      .sort((a, b) => String(b.year).localeCompare(String(a.year)));
+  }
+
+  function calculateDepositPortfolio(deposits) {
+    const active = (deposits || []).map(normalizeDepositLifecycle).filter(isDepositActive);
+    return active.reduce((summary, deposit) => {
+      summary.count += 1;
+      summary.capital = roundMoney(summary.capital + numberValue(deposit.amount));
+      summary.pendingInterest = roundMoney(summary.pendingInterest + numberValue(deposit.interest));
+      summary.maturityTotal = roundMoney(summary.maturityTotal + numberValue(deposit.finalAmount || (numberValue(deposit.amount) + numberValue(deposit.interest))));
+      return summary;
+    }, { count: 0, capital: 0, pendingInterest: 0, maturityTotal: 0 });
   }
 
   function sumInvestmentsByCategory(items, category) {
@@ -146,12 +248,15 @@
 
   root.HomeFlowCore = Object.freeze({
     allocateSavingsByAdult,
+    calculateDepositPortfolio,
     calculateSavingsAccountProjection,
     calculateSavingsBreakdown,
     getInvestmentCategory,
     groupClosedDepositInterestByYear,
+    groupInvestmentInterestByYear,
     isDepositActive,
     isDepositClosed,
+    mergeDepositSources,
     normalizeDepositLifecycle,
     numberValue,
     parseMoneyInput,

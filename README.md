@@ -20,7 +20,10 @@ Aplicación web personal para registrar ingresos, gastos, inversiones, depósito
 - Histórico muestra el ahorro anual de cada adulto. Los gastos comunes, hijos e inversiones del hogar se reparten a partes iguales; lo personal se asigna a su titular.
 - Guardar de nuevo el mismo período sustituye `AAAA-MM`; no crea otro mes.
 - Un depósito cobrado desaparece del patrimonio y su interés neto se agrupa por año.
+- Los depósitos se concilian desde sus dos ubicaciones históricas y el estado `closed` siempre prevalece. Perfil y copia compatible se guardan en una sola escritura.
 - Los depósitos antiguos marcados con `sentToCash` se migran en memoria a `closed` sin perder información.
+- Las cuentas remuneradas permiten registrar el interés neto real: el abono aumenta el saldo y se suma al histórico anual junto a los intereses de depósitos.
+- Diego incluye **Altan** como ingreso recurrente además de sus pagadores ya configurados.
 
 ## Interfaz
 
@@ -30,8 +33,10 @@ Aplicación web personal para registrar ingresos, gastos, inversiones, depósito
 - Acceso y cambio de tema están integrados en la cabecera compacta.
 - «Herramientas y seguridad» deja espacio suficiente para desplazarse sin quedar tapado por la navegación móvil.
 - El patrimonio inicial se configura desde Ajustes.
-- Los depósitos se despliegan localmente sin reconstruir toda la pestaña.
+- El listado de depósitos muestra número de posiciones activas, capital activo, interés pendiente y total estimado al vencimiento.
 - Las cuentas remuneradas guardan saldo, titular y TAE; se suman al patrimonio y al Rosco Económico, con interés mensual y anual estimados.
+- Los desplegables de cuentas e intereses anuales conservan su estado al guardar un abono.
+- CSS y JavaScript llevan versión de publicación para evitar que el navegador reutilice lógica antigua.
 - La calculadora de interés compuesto compara escenarios, inflación, valor real y objetivo.
 
 ## Desarrollo

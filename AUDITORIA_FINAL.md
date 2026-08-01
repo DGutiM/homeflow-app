@@ -1,4 +1,28 @@
-# Auditoría final · 30 de junio de 2026
+# Auditoría final · 1 de agosto de 2026
+
+## Revisión de depósitos, cuentas e ingresos
+
+- Copia remota previa: `backup/pre-deposit-sync-altan-2026-08-01`.
+- Clonación de trabajo aislada: `/private/tmp/homeflow-audit-20260801.znhwkj/repo`.
+- Se encontró la causa de la desincronización: los depósitos se guardaban en `profile.deposits` y `bundle.deposits` mediante dos escrituras distintas.
+- El guardado del perfil actualiza ambas ubicaciones en una sola operación y el método duplicado `saveDeposits` se ha retirado.
+- La conciliación nunca permite que una copia activa vuelva a abrir un depósito que ya figura como cerrado en la otra copia.
+- El resumen de depósitos se calcula únicamente con posiciones activas y muestra capital, interés pendiente y total al vencimiento.
+- Los intereses reales de cuentas remuneradas se guardan por fecha, aumentan el saldo y aparecen en el acumulado anual junto a los depósitos cerrados.
+- Altan se añade como ingreso recurrente específico de Diego sin sustituir Hospital, Universidad ni otros pagadores existentes.
+- Los archivos JavaScript y CSS usan una versión de caché común para que GitHub Pages cargue la publicación nueva.
+
+## Validación de esta revisión
+
+- Prueba automática de dos copias contradictorias del mismo depósito: el resultado conserva `closed` y capital activo cero.
+- Prueba de cartera con dos depósitos activos y uno cerrado: solo se suman los dos activos.
+- Prueba combinada de intereses de depósito y Trade Republic separada por años y por origen.
+- Cierre visual de un depósito: el contador pasó de 2 a 1 y el capital activo de 8.000 € a 5.000 €.
+- Abono visual de 24,66 € en Trade Republic: saldo de 10.000 € a 10.024,66 € e histórico anual de 32,40 € a 57,06 €.
+- El bloque de cuentas y el año de intereses permanecieron abiertos después de guardar el abono.
+- Altan apareció en el bloque mensual de Diego junto a Hospital y Universidad.
+- Interfaz revisada en 1365 × 900 y 390 × 844, sin desbordamiento horizontal en móvil.
+- `npm test`, comprobación de sintaxis, contratos HTML, IDs duplicados y `git diff --check` correctos.
 
 ## Seguridad de datos
 

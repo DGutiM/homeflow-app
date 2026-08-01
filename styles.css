@@ -280,6 +280,38 @@
     }
     .savings-account-projection { margin: 12px 0; }
     .savings-account-item .btn-soft { width: 100%; }
+    .account-interest-entry {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+    }
+    .account-interest-entry h4 { margin: 0 0 4px; }
+    .account-interest-fields {
+      grid-template-columns: minmax(120px, 1fr) minmax(150px, 1fr) auto;
+      align-items: end;
+    }
+    .account-interest-list { margin-top: 12px; }
+    .interest-source-summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 12px 0;
+    }
+    .interest-source-summary span {
+      display: inline-flex;
+      gap: 6px;
+      padding: 7px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #f6faff;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+    .interest-source-summary strong { color: var(--text); }
+    .deposit-summary-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      margin: 14px 0 18px;
+    }
     .section-title { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 12px; }
     .kpi-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 14px; }
     .kpi { padding: 16px; border-radius: 20px; background: linear-gradient(180deg, #fbfdff 0%, #f6faff 100%); border: 1px solid #e7eef7; }
@@ -659,6 +691,9 @@
       .personal-savings-total { align-items: flex-start; flex-direction: column; }
       .personal-savings-grid,
       .savings-account-projection { grid-template-columns: 1fr; }
+      .account-interest-fields,
+      .deposit-summary-grid { grid-template-columns: 1fr 1fr !important; }
+      .account-interest-fields > .btn { grid-column: 1 / -1; width: 100%; }
       .list-row, .alert-row, .total-item { align-items: flex-start; flex-direction: column; }
       .list-row > div:last-child, .alert-row > div:last-child, .total-item > span:last-child { width: 100%; }
       .list-row .btn, .alert-row .btn { width: 100%; }
@@ -1100,6 +1135,7 @@
     body.dark .savings-account-projection > div {
       background: rgba(7, 17, 31, 0.45);
     }
+    body.dark .interest-source-summary span { background: #13233b; }
     body.dark .mobile-nav-button {
       color: #9db0c9;
     }

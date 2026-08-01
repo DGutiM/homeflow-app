@@ -40,9 +40,13 @@
         const label = String(adult.job2 || adult.secondIncome).trim();
         if (label) extra.push({ id: createId('income'), label });
       }
+      const adultName = String(adult.name || '').trim();
+      if (adultName.toLocaleLowerCase('es') === 'diego' && !extra.some(item => item.label.toLocaleLowerCase('es') === 'altan')) {
+        extra.push({ id: 'income_altan', label: 'Altan' });
+      }
       return {
         id: adult.id || createId('adult'),
-        name: String(adult.name || '').trim(),
+        name: adultName,
         mainIncomeLabel: String(adult.mainIncomeLabel || adult.job1 || adult.mainIncome || 'Ingreso principal').trim() || 'Ingreso principal',
         extraIncomeLabels: extra
       };
@@ -56,7 +60,10 @@
       merged.extraFixedExpenseLabels = Array.isArray(merged.extraFixedExpenseLabels) ? merged.extraFixedExpenseLabels : [];
       merged.fixedIncomePositions = Array.isArray(merged.fixedIncomePositions) ? merged.fixedIncomePositions : [];
       merged.investmentPositions = Array.isArray(merged.investmentPositions) ? merged.investmentPositions : [];
-      merged.savingsAccounts = Array.isArray(merged.savingsAccounts) ? merged.savingsAccounts : [];
+      merged.savingsAccounts = (Array.isArray(merged.savingsAccounts) ? merged.savingsAccounts : []).map(account => ({
+        ...account,
+        interestEntries: Array.isArray(account?.interestEntries) ? account.interestEntries : []
+      }));
       merged.deposits = (Array.isArray(merged.deposits) ? merged.deposits : [])
         .map(item => HomeFlowCore.normalizeDepositLifecycle(item));
       merged.archivedAdults = (merged.archivedAdults || []).map(normalizeAdult).filter(adult => adult.name);
@@ -377,6 +384,7 @@
       async saveProfile(profile) {
         const bundle = await this.getSafeBundle();
         bundle.profile = structuredClone(profile);
+        bundle.deposits = structuredClone(profile?.deposits || []);
         await this.saveUserBundle(state.currentUser.uid, bundle);
       },
       async getProfile() {
@@ -400,12 +408,7 @@
         const all = await this.getAllPeriods();
         return all[periodId] || null;
       },
-      async saveDeposits(deposits) {
-        const bundle = await this.getSafeBundle();
-        bundle.deposits = structuredClone(deposits || []);
-        await this.saveUserBundle(state.currentUser.uid, bundle);
-      },
-      async getDeposits() {
+      async getLegacyDeposits() {
         const bundle = await this.getSafeBundle();
         return bundle.deposits || [];
       },
@@ -661,13 +664,11 @@
         document.getElementById('app-content').classList.remove('hidden');
         document.getElementById('current-user-label').textContent = `Usuario conectado: ${user.email}`;
         state.profile = normalizeProfile(await storageAdapter.getProfile());
-        const separatelyStoredDeposits = await storageAdapter.getDeposits();
-        const depositsById = new Map();
-        [...(separatelyStoredDeposits || []), ...(state.profile.deposits || [])].forEach((deposit) => {
-          const key = deposit?.id || `${deposit?.name || 'deposit'}_${deposit?.start || ''}_${deposit?.amount || 0}`;
-          depositsById.set(key, HomeFlowCore.normalizeDepositLifecycle(deposit));
-        });
-        state.profile.deposits = Array.from(depositsById.values());
+        const separatelyStoredDeposits = await storageAdapter.getLegacyDeposits();
+        state.profile.deposits = HomeFlowCore.mergeDepositSources(
+          state.profile.deposits || [],
+          separatelyStoredDeposits || []
+        );
         if (!Array.isArray(state.profile.fixedIncomePositions)) state.profile.fixedIncomePositions = [];
         if (!Array.isArray(state.profile.investmentPositions)) {
           state.profile.investmentPositions = (state.profile.fixedIncomePositions || []).map(item => ({ id: item.id || createId('inv'), name: item.name, type: item.type || 'Renta fija', owner: item.owner || 'Hogar', platform: item.entity || '', amount: num(item.amount) }));
@@ -2048,6 +2049,7 @@
         owner,
         balance: round2(balance),
         annualRate: round2(annualRate),
+        interestEntries: [],
         updatedAt: new Date().toISOString()
       });
       try {
@@ -2082,6 +2084,11 @@
       container.innerHTML = accounts.map(account => {
         const projection = HomeFlowCore.calculateSavingsAccountProjection(account.balance, account.annualRate);
         const accountId = escapeHtml(account.id);
+        const interestEntries = (Array.isArray(account.interestEntries) ? account.interestEntries : [])
+          .slice()
+          .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+        const interestTotal = interestEntries.reduce((total, entry) => total + num(entry.amount), 0);
+        const defaultInterestDate = formatDateInput(new Date());
         return `
           <article class="category-card savings-account-item">
             <div class="section-title">
@@ -2104,8 +2111,43 @@
             <div class="savings-account-projection">
               <div><span>Interés mensual estimado</span><strong>${formatCurrency(projection.monthlyInterest)}</strong></div>
               <div><span>Interés anual estimado</span><strong>${formatCurrency(projection.annualInterest)}</strong></div>
+              <div><span>Interés real registrado</span><strong>${formatCurrency(interestTotal)}</strong></div>
             </div>
             <button class="btn btn-soft" type="button" data-save-savings-account="${accountId}">Actualizar saldo y TAE</button>
+            <div class="account-interest-entry">
+              <div class="section-title">
+                <div>
+                  <h4>Registrar interés cobrado</h4>
+                  <span class="muted">Se suma al saldo y al histórico anual de intereses.</span>
+                </div>
+              </div>
+              <div class="field-row account-interest-fields">
+                <div>
+                  <label for="savings-interest-amount-${accountId}">Importe neto (€)</label>
+                  <input id="savings-interest-amount-${accountId}" type="number" min="0" step="0.01" placeholder="${projection.monthlyInterest || 0}" />
+                </div>
+                <div>
+                  <label for="savings-interest-date-${accountId}">Fecha de abono</label>
+                  <input id="savings-interest-date-${accountId}" type="date" value="${defaultInterestDate}" />
+                </div>
+                <button class="btn btn-primary" type="button" data-add-savings-interest="${accountId}">Sumar interés</button>
+              </div>
+              <div class="status" id="savings-interest-status-${accountId}"></div>
+              ${interestEntries.length ? `
+                <div class="compact-list account-interest-list">
+                  ${interestEntries.slice(0, 4).map(entry => `
+                    <div class="compact-row">
+                      <div class="compact-row-main">
+                        <div class="compact-row-title">${formatCurrency(entry.amount)}</div>
+                        <div class="compact-row-subtitle">Abonado ${entry.date ? new Date(`${entry.date}T12:00:00`).toLocaleDateString('es-ES') : 'sin fecha'}</div>
+                      </div>
+                      <button class="btn btn-danger btn-inline" type="button" data-delete-savings-interest="${escapeHtml(entry.id)}" data-account-id="${accountId}">Deshacer</button>
+                    </div>
+                  `).join('')}
+                  ${interestEntries.length > 4 ? `<div class="muted">Y ${interestEntries.length - 4} abonos anteriores, incluidos en el total.</div>` : ''}
+                </div>
+              ` : ''}
+            </div>
           </article>
         `;
       }).join('');
@@ -2114,11 +2156,73 @@
         button.addEventListener('click', async () => {
           const account = accounts.find(item => item.id === button.dataset.saveSavingsAccount);
           if (!account) return;
+          const previous = { balance: account.balance, annualRate: account.annualRate, updatedAt: account.updatedAt };
           account.balance = round2(num(document.getElementById(`savings-balance-${account.id}`)?.value || 0));
           account.annualRate = round2(num(document.getElementById(`savings-rate-${account.id}`)?.value || 0));
           account.updatedAt = new Date().toISOString();
-          await storageAdapter.saveProfile(state.profile);
-          await renderInvestmentsTab();
+          try {
+            await storageAdapter.saveProfile(state.profile);
+            await renderInvestmentsTab();
+          } catch (error) {
+            Object.assign(account, previous);
+            console.error(error);
+          }
+        });
+      });
+      container.querySelectorAll('[data-add-savings-interest]').forEach(button => {
+        button.addEventListener('click', async () => {
+          const account = accounts.find(item => item.id === button.dataset.addSavingsInterest);
+          if (!account) return;
+          const amountInput = document.getElementById(`savings-interest-amount-${account.id}`);
+          const dateInput = document.getElementById(`savings-interest-date-${account.id}`);
+          const status = document.getElementById(`savings-interest-status-${account.id}`);
+          const amount = round2(num(amountInput?.value || 0));
+          const date = dateInput?.value || formatDateInput(new Date());
+          if (amount <= 0) {
+            if (status) {
+              status.style.color = 'var(--bad)';
+              status.textContent = 'Introduce el interés neto que te ha abonado la cuenta.';
+            }
+            return;
+          }
+          account.interestEntries ||= [];
+          const entry = { id: createId('interest'), amount, date, createdAt: new Date().toISOString() };
+          const previousBalance = num(account.balance);
+          account.interestEntries.push(entry);
+          account.balance = round2(previousBalance + amount);
+          account.updatedAt = new Date().toISOString();
+          try {
+            await storageAdapter.saveProfile(state.profile);
+            await renderInvestmentsTab();
+          } catch (error) {
+            account.interestEntries = account.interestEntries.filter(item => item.id !== entry.id);
+            account.balance = previousBalance;
+            if (status) {
+              status.style.color = 'var(--bad)';
+              status.textContent = error?.message || 'No se pudo guardar el interés.';
+            }
+          }
+        });
+      });
+      container.querySelectorAll('[data-delete-savings-interest]').forEach(button => {
+        button.addEventListener('click', async () => {
+          const account = accounts.find(item => item.id === button.dataset.accountId);
+          const entry = account?.interestEntries?.find(item => item.id === button.dataset.deleteSavingsInterest);
+          if (!account || !entry) return;
+          if (!confirm(`¿Deshacer el interés de ${formatCurrency(entry.amount)}? También se restará del saldo de la cuenta.`)) return;
+          const previousBalance = num(account.balance);
+          const previousEntries = account.interestEntries.slice();
+          account.interestEntries = account.interestEntries.filter(item => item.id !== entry.id);
+          account.balance = round2(Math.max(0, previousBalance - num(entry.amount)));
+          account.updatedAt = new Date().toISOString();
+          try {
+            await storageAdapter.saveProfile(state.profile);
+            await renderInvestmentsTab();
+          } catch (error) {
+            account.interestEntries = previousEntries;
+            account.balance = previousBalance;
+            console.error(error);
+          }
         });
       });
       container.querySelectorAll('[data-delete-savings-account]').forEach(button => {
@@ -2128,8 +2232,13 @@
           const account = accounts[index];
           if (!confirm(`¿Eliminar la cuenta remunerada "${account.name}"?`)) return;
           accounts.splice(index, 1);
-          await storageAdapter.saveProfile(state.profile);
-          await renderInvestmentsTab();
+          try {
+            await storageAdapter.saveProfile(state.profile);
+            await renderInvestmentsTab();
+          } catch (error) {
+            accounts.splice(index, 0, account);
+            console.error(error);
+          }
         });
       });
     }
@@ -2152,11 +2261,10 @@
       currentDeposits().push({ id: createId('deposit'), name, bank, owner, amount, rate, start, durationMonths, createdAt: new Date().toISOString(), ...estimate });
       try {
         await storageAdapter.saveProfile(state.profile);
-        await storageAdapter.saveDeposits(currentDeposits());
         ['deposit-name','deposit-bank','deposit-amount','deposit-rate','deposit-start','deposit-duration-months'].forEach(id => document.getElementById(id).value = '');
         document.getElementById('deposit-owner').value = 'Hogar';
         setDepositStatus('Depósito añadido correctamente.');
-        renderInvestmentsTab();
+        await renderInvestmentsTab();
       } catch (error) {
         console.error(error);
         currentDeposits().pop();
@@ -2403,41 +2511,58 @@ async function addHistoricalInvestment() {
     async function closeDeposit(depositId) {
       const deposit = currentDeposits().find(item => item.id === depositId);
       if (!deposit || isDepositClosed(deposit)) return;
+      const previousLifecycle = {
+        status: deposit.status,
+        closedAt: deposit.closedAt,
+        closedInterest: deposit.closedInterest
+      };
       deposit.status = 'closed';
       deposit.closedAt = new Date().toISOString();
       deposit.closedInterest = round2(deposit.interest || 0);
-      await storageAdapter.saveProfile(state.profile);
-      await storageAdapter.saveDeposits(currentDeposits());
-      await renderInvestmentsTab();
+      try {
+        await storageAdapter.saveProfile(state.profile);
+        await renderInvestmentsTab();
+      } catch (error) {
+        deposit.status = previousLifecycle.status;
+        deposit.closedAt = previousLifecycle.closedAt;
+        deposit.closedInterest = previousLifecycle.closedInterest;
+        setDepositStatus(error?.message || 'No se pudo cerrar el depósito.', true);
+      }
     }
 
-    function renderDepositInterestByYear(deposits = currentDeposits()) {
+    function renderDepositInterestByYear(deposits = currentDeposits(), savingsAccounts = currentSavingsAccounts()) {
       const container = document.getElementById('deposit-interest-year-list');
       if (!container) return;
-      const groups = HomeFlowCore.groupClosedDepositInterestByYear(deposits);
+      const openAccordionKeys = getOpenAccordionKeys(container);
+      const groups = HomeFlowCore.groupInvestmentInterestByYear(deposits, savingsAccounts);
       if (!groups.length) {
-        container.innerHTML = '<div class="empty-box">Todavía no hay depósitos cobrados.</div>';
+        container.innerHTML = '<div class="empty-box">Todavía no hay intereses cobrados de depósitos o cuentas remuneradas.</div>';
         return;
       }
       container.innerHTML = groups.map(group => `
-        <details class="category-card collapsible-note">
+        <details class="category-card collapsible-note" data-accordion-key="interest-year-${escapeHtml(group.year)}">
           <summary>
-            <span>Intereses depósitos ${escapeHtml(group.year)}</span>
+            <span>Intereses cobrados ${escapeHtml(group.year)}</span>
             <strong style="float:right; color:var(--good);">${formatCurrency(group.total)}</strong>
           </summary>
+          <div class="interest-source-summary">
+            <span>Depósitos <strong>${formatCurrency(group.depositTotal)}</strong></span>
+            <span>Cuentas remuneradas <strong>${formatCurrency(group.savingsAccountTotal)}</strong></span>
+          </div>
           <div class="compact-list">
-            ${group.deposits.map(deposit => `
+            ${group.events.map(event => `
               <div class="compact-row">
                 <div class="compact-row-main">
-                  <div class="compact-row-title">${escapeHtml(deposit.name || 'Depósito')}</div>
-                  <div class="compact-row-subtitle">${escapeHtml(deposit.bank || 'Sin entidad')} · Cobrado ${deposit.closedAt ? new Date(deposit.closedAt).toLocaleDateString('es-ES') : 'sin fecha'}</div>
+                  <div class="compact-row-title">${escapeHtml(event.sourceName)}</div>
+                  <div class="compact-row-subtitle">${event.sourceType === 'deposit' ? 'Depósito cobrado' : 'Interés de cuenta'} · ${event.date ? new Date(event.date.length === 10 ? `${event.date}T12:00:00` : event.date).toLocaleDateString('es-ES') : 'sin fecha'} · ${escapeHtml(event.owner)}</div>
                 </div>
-                <div class="compact-row-amount">${formatCurrency(deposit.closedInterest || 0)}</div>
+                <div class="compact-row-amount">${formatCurrency(event.amount)}</div>
               </div>
             `).join('')}
           </div>
         </details>
       `).join('');
+      restoreOpenAccordionKeys(container, openAccordionKeys);
     }
 
     function getSavedFixedIncomeTransfersToFunds() {
@@ -2482,6 +2607,11 @@ async function addHistoricalInvestment() {
       const list = document.getElementById('deposit-list');
       if (!list) return;
       const activeDeposits = deposits.filter(isDepositActive);
+      const portfolio = HomeFlowCore.calculateDepositPortfolio(activeDeposits);
+      setText('deposit-active-count', String(portfolio.count));
+      setText('deposit-active-capital', formatCurrency(portfolio.capital));
+      setText('deposit-pending-interest', formatCurrency(portfolio.pendingInterest));
+      setText('deposit-maturity-total', formatCurrency(portfolio.maturityTotal));
       list.innerHTML = '';
       if (!activeDeposits.length) {
         list.className = 'dynamic-list';
@@ -2545,10 +2675,14 @@ async function addHistoricalInvestment() {
         row.querySelector('[data-delete-deposit]').addEventListener('click', async () => {
           const confirmedDelete = confirm(`¿Seguro que quieres eliminar el depósito "${deposit.name}"?`);
           if (!confirmedDelete) return;
-          deposits.splice(depositIndex, 1);
-          await storageAdapter.saveProfile(state.profile);
-          await storageAdapter.saveDeposits(deposits);
-          await renderInvestmentsTab();
+          const [removedDeposit] = deposits.splice(depositIndex, 1);
+          try {
+            await storageAdapter.saveProfile(state.profile);
+            await renderInvestmentsTab();
+          } catch (error) {
+            deposits.splice(depositIndex, 0, removedDeposit);
+            setDepositStatus(error?.message || 'No se pudo eliminar el depósito.', true);
+          }
         });
         row.querySelector('[data-close-deposit]')?.addEventListener('click', async () => {
           const confirmedClose = confirm(`¿Marcar "${deposit.name}" como cobrado? Desaparecerá del patrimonio y su interés neto quedará registrado en ${new Date().getFullYear()}.`);
@@ -2589,8 +2723,8 @@ async function addHistoricalInvestment() {
       if (depositTodayNote) depositTodayNote.textContent = `Cálculo hecho con la fecha actual del dispositivo: ${todayDevice.toLocaleDateString('es-ES')}`;
       const deposits = currentDeposits();
       renderActiveDepositList(deposits, todayDevice);
-      renderDepositInterestByYear(deposits);
       const savingsAccounts = currentSavingsAccounts();
+      renderDepositInterestByYear(deposits, savingsAccounts);
       renderSavingsAccounts();
 
       const aggregated = await getAggregatedMonthlyInvestments();
@@ -3058,7 +3192,6 @@ async function addHistoricalInvestment() {
       state.setupDraft = structuredClone(state.profile);
 
       await storageAdapter.saveProfile(state.profile);
-      await storageAdapter.saveDeposits(state.profile.deposits || []);
 
       renderProfileStatus();
       renderProfileConfig();

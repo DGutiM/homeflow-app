@@ -16,8 +16,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="homeflow-core.js"></script>
-  <link rel="stylesheet" href="styles.css?v=20260701-1" />
+  <script src="homeflow-core.js?v=20260801-1"></script>
+  <link rel="stylesheet" href="styles.css?v=20260801-1" />
 </head>
 <body>
   <div class="app-shell">
@@ -341,7 +341,7 @@
             <div class="kpi info"><div class="kpi-label">Renta variable</div><div class="kpi-value" id="investments-total-funds">0 €</div></div>
             <div class="kpi"><div class="kpi-label">Renta fija</div><div class="kpi-value" id="investments-total-fixed">0 €</div></div>
             <div class="kpi info"><div class="kpi-label">Cuentas remuneradas</div><div class="kpi-value" id="investments-total-savings-accounts">0 €</div></div>
-            <div class="kpi info"><div class="kpi-label">Depósitos</div><div class="kpi-value" id="investments-total-deposits">0 €</div></div>
+            <div class="kpi info"><div class="kpi-label">Depósitos activos</div><div class="kpi-value" id="investments-total-deposits">0 €</div></div>
             <div class="kpi"><div class="kpi-label">Vivienda pagada</div><div class="kpi-value" id="investments-total-housing">0 €</div></div>
             <div class="kpi positive"><div class="kpi-label">Total</div><div class="kpi-value" id="investments-total-all">0 €</div></div>
           </div>
@@ -374,7 +374,7 @@
               <div class="section-title">
                 <div>
                   <h2>Cuentas remuneradas</h2>
-                  <p class="subtle">Introduce el saldo actual y la TAE. HomeFlow estima el interés mensual, pero no modifica el saldo automáticamente.</p>
+                  <p class="subtle">Introduce el saldo actual y la TAE. Después podrás registrar cada interés real que te abone la cuenta: se sumará al saldo y al histórico anual.</p>
                 </div>
               </div>
               <div class="field-row-4">
@@ -524,25 +524,31 @@
 
         <details class="workspace-accordion" data-mobile-collapsed>
           <summary>
-            <span><strong>Listado de depósitos</strong><small>Capital, vencimientos y cobro</small></span>
+            <span><strong>Listado de depósitos</strong><small>Saldo activo, vencimientos y cobro</small></span>
           </summary>
           <div class="accordion-body">
           <div class="card accordion-inner-card">
             <p class="subtle" id="deposit-today-note"></p>
+            <div class="kpi-grid deposit-summary-grid">
+              <div class="kpi info"><div class="kpi-label">Depósitos activos</div><div class="kpi-value" id="deposit-active-count">0</div></div>
+              <div class="kpi"><div class="kpi-label">Capital activo</div><div class="kpi-value" id="deposit-active-capital">0 €</div></div>
+              <div class="kpi positive"><div class="kpi-label">Interés pendiente</div><div class="kpi-value" id="deposit-pending-interest">0 €</div></div>
+              <div class="kpi info"><div class="kpi-label">Total al vencimiento</div><div class="kpi-value" id="deposit-maturity-total">0 €</div></div>
+            </div>
             <div id="deposit-list" class="dynamic-list"></div>
           </div>
           </div>
         </details>
         <details class="workspace-accordion" data-mobile-collapsed>
           <summary>
-            <span><strong>Intereses de depósitos por año</strong><small>Solo intereses de depósitos ya cobrados</small></span>
+            <span><strong>Intereses cobrados por año</strong><small>Depósitos cerrados y cuentas remuneradas</small></span>
           </summary>
           <div class="accordion-body">
         <div class="card accordion-inner-card">
           <div class="section-title">
             <div>
-              <h2>Intereses de depósitos por año</h2>
-              <p class="subtle">Al cobrar un depósito desaparece del patrimonio y aquí queda únicamente su interés neto estimado.</p>
+              <h2>Intereses cobrados por año</h2>
+              <p class="subtle">Al cobrar un depósito desaparece del patrimonio. Los intereses reales de cuentas como Trade Republic se registran sin cerrar la cuenta y también se acumulan aquí.</p>
             </div>
           </div>
           <div id="deposit-interest-year-list" class="dynamic-list"></div>
@@ -863,6 +869,6 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=20260801-1"></script>
 </body>
 </html>

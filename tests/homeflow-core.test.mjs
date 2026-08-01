@@ -42,6 +42,24 @@ assert.equal(closedLegacy.status, 'closed');
 assert.equal(core.isDepositActive(closedLegacy), false);
 assert.equal(closedLegacy.closedInterest, 81.25);
 
+const reconciledDeposits = core.mergeDepositSources(
+  [{ id: 'deposito-1', name: 'Duplicado', amount: 1000, status: 'active' }],
+  [{ id: 'deposito-1', name: 'Duplicado', amount: 1000, status: 'closed', closedAt: '2026-07-01T10:00:00.000Z', closedInterest: 25 }]
+);
+assert.equal(reconciledDeposits.length, 1);
+assert.equal(reconciledDeposits[0].status, 'closed');
+assert.equal(reconciledDeposits[0].closedInterest, 25);
+assert.equal(core.calculateDepositPortfolio(reconciledDeposits).capital, 0);
+
+assert.deepEqual(
+  core.calculateDepositPortfolio([
+    { id: 'activo-1', status: 'active', amount: 1000, interest: 20, finalAmount: 1020 },
+    { id: 'activo-2', amount: 500, interest: 5, finalAmount: 505 },
+    { id: 'cerrado', status: 'closed', amount: 9000, interest: 200, finalAmount: 9200 }
+  ]),
+  { count: 2, capital: 1500, pendingInterest: 25, maturityTotal: 1525 }
+);
+
 const interestYears = core.groupClosedDepositInterestByYear([
   closedLegacy,
   { name: 'Segundo', status: 'closed', closedAt: '2026-12-01T10:00:00.000Z', closedInterest: 20 },
@@ -53,6 +71,26 @@ assert.deepEqual(
   [
     { year: '2027', total: 10 },
     { year: '2026', total: 101.25 }
+  ]
+);
+
+const combinedInterestYears = core.groupInvestmentInterestByYear(
+  [{ id: 'dep', name: 'Depósito', status: 'closed', closedAt: '2026-06-01T10:00:00.000Z', closedInterest: 40 }],
+  [{
+    id: 'trade-republic',
+    name: 'Trade Republic',
+    owner: 'Diego',
+    interestEntries: [
+      { id: 'tr-1', date: '2026-06-30', amount: 20.5 },
+      { id: 'tr-2', date: '2027-01-31', amount: 21 }
+    ]
+  }]
+);
+assert.deepEqual(
+  combinedInterestYears.map(({ year, total, depositTotal, savingsAccountTotal }) => ({ year, total, depositTotal, savingsAccountTotal })),
+  [
+    { year: '2027', total: 21, depositTotal: 0, savingsAccountTotal: 21 },
+    { year: '2026', total: 60.5, depositTotal: 40, savingsAccountTotal: 20.5 }
   ]
 );
 
