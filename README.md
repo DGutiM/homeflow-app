@@ -15,14 +15,16 @@ Aplicación web personal para registrar ingresos, gastos, inversiones, depósito
 - Fondo, ETF, acciones y renta variable se agrupan como **renta variable**.
 - **Renta fija** solo suma posiciones de renta fija.
 - Las aportaciones mensuales continúan alimentando automáticamente la categoría elegida.
-- Las aportaciones a fondos indexados reducen el **ahorro disponible**, porque se consideran dinero reservado hasta el largo plazo.
+- Todas las aportaciones mensuales a renta variable y renta fija reducen el **ahorro disponible**, porque se consideran dinero reservado a largo plazo.
 - El **ahorro total** suma el disponible y esas aportaciones, para que invertir no aparezca como si fuera consumo.
 - Histórico muestra el ahorro anual de cada adulto. Los gastos comunes, hijos e inversiones del hogar se reparten a partes iguales; lo personal se asigna a su titular.
 - Guardar de nuevo el mismo período sustituye `AAAA-MM`; no crea otro mes.
+- La web avisa cuando un mes tiene cambios sin guardar y pide confirmación antes de descartarlos.
 - Un depósito cobrado desaparece del patrimonio y su interés neto se agrupa por año.
 - Los depósitos se concilian desde sus dos ubicaciones históricas y el estado `closed` siempre prevalece. Perfil y copia compatible se guardan en una sola escritura.
 - Los depósitos antiguos marcados con `sentToCash` se migran en memoria a `closed` sin perder información.
 - Las cuentas remuneradas permiten registrar el interés neto real: el abono aumenta el saldo y se suma al histórico anual junto a los intereses de depósitos.
+- La estimación de depósitos muestra interés bruto, retención configurable e interés neto. Al cobrar, se confirma el interés neto real antes de archivarlo.
 - Diego incluye **Altan** como ingreso recurrente además de sus pagadores ya configurados.
 
 ## Interfaz
@@ -38,6 +40,8 @@ Aplicación web personal para registrar ingresos, gastos, inversiones, depósito
 - Los desplegables de cuentas e intereses anuales conservan su estado al guardar un abono.
 - CSS y JavaScript llevan versión de publicación para evitar que el navegador reutilice lógica antigua.
 - La calculadora de interés compuesto compara escenarios, inflación, valor real y objetivo.
+- Excel y PDF incluyen el detalle de intereses realmente cobrados.
+- Los guardados se serializan para evitar que dos operaciones simultáneas dentro de la misma sesión se sobrescriban.
 
 ## Desarrollo
 

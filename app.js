@@ -10,10 +10,10 @@
 
     const state = {
       currentUser: null,
-      authMode: 'local',
       profile: createEmptyProfile(),
       currentPeriod: null,
       form: createEmptyPeriodData(),
+      periodDirty: false,
       charts: {},
       investmentTotals: null,
       setupDraft: createEmptyProfile()
@@ -247,60 +247,46 @@
       firebaseReady: false,
       init() {
         try {
-          if (FIREBASE_WEB_CONFIG && FIREBASE_WEB_CONFIG.apiKey) {
-            firebase.initializeApp(FIREBASE_WEB_CONFIG);
-            this.firebaseReady = true;
-            state.authMode = 'firebase';
-                        firebase.auth().onAuthStateChanged(async (user) => {
-              if (user) {
-                await onUserAuthenticated({ uid: user.uid, email: user.email });
-              } else {
-                onUserSignedOut();
-              }
-            });
-          } else {
-                        const session = JSON.parse(localStorage.getItem('homeflow_local_session') || 'null');
-            if (session?.email) onUserAuthenticated({ uid: session.email, email: session.email });
-          }
+          if (!FIREBASE_WEB_CONFIG?.apiKey) throw new Error('Falta la configuración de Firebase.');
+          firebase.initializeApp(FIREBASE_WEB_CONFIG);
+          this.firebaseReady = true;
+          firebase.auth().onAuthStateChanged(async (user) => {
+            if (user) {
+              await onUserAuthenticated({ uid: user.uid, email: user.email });
+            } else {
+              onUserSignedOut();
+            }
+          });
         } catch (error) {
           console.error(error);
           document.getElementById('auth-status').textContent = 'No se pudo iniciar el acceso.';
         }
       },
       async register(email, password) {
-        if (this.firebaseReady) {
-          return firebase.auth().createUserWithEmailAndPassword(email, password);
-        }
-        const users = JSON.parse(localStorage.getItem('homeflow_local_users') || '{}');
-        if (users[email]) throw new Error('Ese correo ya existe en modo local.');
-        users[email] = { password };
-        localStorage.setItem('homeflow_local_users', JSON.stringify(users));
-        localStorage.setItem('homeflow_local_session', JSON.stringify({ email }));
-        return { user: { uid: email, email } };
+        if (!this.firebaseReady) throw new Error('Firebase no está disponible.');
+        return firebase.auth().createUserWithEmailAndPassword(email, password);
       },
       async login(email, password) {
-        if (this.firebaseReady) {
-          return firebase.auth().signInWithEmailAndPassword(email, password);
-        }
-        const users = JSON.parse(localStorage.getItem('homeflow_local_users') || '{}');
-        if (!users[email] || users[email].password !== password) throw new Error('Correo o contraseña incorrectos en modo local.');
-        localStorage.setItem('homeflow_local_session', JSON.stringify({ email }));
-        return { user: { uid: email, email } };
+        if (!this.firebaseReady) throw new Error('Firebase no está disponible.');
+        return firebase.auth().signInWithEmailAndPassword(email, password);
       },
       async logout() {
-        if (this.firebaseReady) return firebase.auth().signOut();
-        localStorage.removeItem('homeflow_local_session');
-        onUserSignedOut();
+        if (!this.firebaseReady) return;
+        return firebase.auth().signOut();
       },
       async resetPassword(email) {
-        if (this.firebaseReady) {
-          return firebase.auth().sendPasswordResetEmail(email);
-        }
-        throw new Error('El reseteo por correo solo funciona con Firebase activo.');
+        if (!this.firebaseReady) throw new Error('Firebase no está disponible.');
+        return firebase.auth().sendPasswordResetEmail(email);
       }
     };
 
     const storageAdapter = {
+      writeQueue: Promise.resolve(),
+      enqueueWrite(task) {
+        const nextWrite = this.writeQueue.then(task, task);
+        this.writeQueue = nextWrite.catch(() => undefined);
+        return nextWrite;
+      },
       getLocalBundleKey(userId) {
         return `homeflow_bundle_${userId}`;
       },
@@ -382,10 +368,14 @@
         }
       },
       async saveProfile(profile) {
-        const bundle = await this.getSafeBundle();
-        bundle.profile = structuredClone(profile);
-        bundle.deposits = structuredClone(profile?.deposits || []);
-        await this.saveUserBundle(state.currentUser.uid, bundle);
+        const userId = state.currentUser?.uid;
+        const profileSnapshot = structuredClone(profile);
+        return this.enqueueWrite(async () => {
+          const bundle = await this.getSafeBundle(userId);
+          bundle.profile = profileSnapshot;
+          bundle.deposits = structuredClone(profileSnapshot?.deposits || []);
+          await this.saveUserBundle(userId, bundle);
+        });
       },
       async getProfile() {
         const bundle = await this.getSafeBundle();
@@ -396,13 +386,17 @@
         return bundle.periods || {};
       },
       async savePeriod(periodId, data) {
-        const bundle = await this.getSafeBundle();
-        bundle.periods = HomeFlowCore.upsertPeriodMap(
-          bundle.periods,
-          periodId,
-          structuredClone(data)
-        );
-        await this.saveUserBundle(state.currentUser.uid, bundle);
+        const userId = state.currentUser?.uid;
+        const periodSnapshot = structuredClone(data);
+        return this.enqueueWrite(async () => {
+          const bundle = await this.getSafeBundle(userId);
+          bundle.periods = HomeFlowCore.upsertPeriodMap(
+            bundle.periods,
+            periodId,
+            periodSnapshot
+          );
+          await this.saveUserBundle(userId, bundle);
+        });
       },
       async getPeriod(periodId) {
         const all = await this.getAllPeriods();
@@ -412,8 +406,8 @@
         const bundle = await this.getSafeBundle();
         return bundle.deposits || [];
       },
-      async getSafeBundle() {
-        const existing = await this.getUserBundle(state.currentUser?.uid);
+      async getSafeBundle(userId = state.currentUser?.uid) {
+        const existing = await this.getUserBundle(userId);
         return existing || { profile: createEmptyProfile(), periods: {}, deposits: [] };
       }
     };
@@ -461,8 +455,8 @@
       return state.profile.savingsAccounts;
     }
 
-    function getFundMonthlyInvestments(list = []) {
-      return (list || []).filter(item => getInvestmentCategory(item?.type) === 'funds');
+    function getMonthlyInvestments(list = []) {
+      return Array.isArray(list) ? list : [];
     }
 
 
@@ -583,10 +577,12 @@
       document.getElementById('btn-login').addEventListener('click', handleLogin);
       document.getElementById('btn-register').addEventListener('click', handleRegister);
       document.getElementById('btn-reset-password').addEventListener('click', handleResetPassword);
-      document.getElementById('btn-logout').addEventListener('click', () => authAdapter.logout());
+      document.getElementById('btn-logout').addEventListener('click', () => {
+        if (confirmDiscardPeriodChanges()) authAdapter.logout();
+      });
       document.getElementById('btn-open-setup').addEventListener('click', openSetupModalFromProfile);
       document.getElementById('go-config').addEventListener('click', () => document.querySelector('[data-tab="configuracion"]').click());
-      document.getElementById('load-period').addEventListener('click', loadSelectedPeriod);
+      document.getElementById('load-period').addEventListener('click', () => loadSelectedPeriod());
       document.getElementById('save-period').addEventListener('click', saveCurrentPeriod);
       document.getElementById('calculate-compound').addEventListener('click', calculateCompound);
       document.getElementById('export-history').addEventListener('click', exportHistoryExcel);
@@ -618,6 +614,11 @@
       ['compound-initial', 'compound-monthly', 'compound-rate', 'compound-inflation', 'compound-years', 'compound-target'].forEach(id => {
         document.getElementById(id)?.addEventListener('change', calculateCompound);
       });
+      window.addEventListener('beforeunload', event => {
+        if (!state.periodDirty) return;
+        event.preventDefault();
+        event.returnValue = '';
+      });
     }
 
     async function handleRegister() {
@@ -625,8 +626,7 @@
       const password = document.getElementById('auth-password').value;
       if (!email || password.length < 6) return setAuthStatus('Introduce un correo y una contraseña de al menos 6 caracteres.', true);
       try {
-        const result = await authAdapter.register(email, password);
-          if (!authAdapter.firebaseReady) await onUserAuthenticated({ uid: result.user.uid, email: result.user.email });
+        await authAdapter.register(email, password);
       } catch (error) {
         setAuthStatus(error.message || 'No se pudo crear la cuenta.', true);
       }
@@ -637,8 +637,7 @@
       const password = document.getElementById('auth-password').value;
       if (!email || !password) return setAuthStatus('Introduce correo y contraseña.', true);
       try {
-        const result = await authAdapter.login(email, password);
-          if (!authAdapter.firebaseReady) await onUserAuthenticated({ uid: result.user.uid, email: result.user.email });
+        await authAdapter.login(email, password);
       } catch (error) {
         setAuthStatus(error.message || 'No se pudo iniciar sesión.', true);
       }
@@ -694,6 +693,7 @@
       state.currentUser = null;
       state.profile = createEmptyProfile();
       state.form = createEmptyPeriodData();
+      setPeriodDirty(false);
       state.investmentTotals = null;
       document.getElementById('auth-logged-out').classList.remove('hidden');
       document.getElementById('auth-logged-in').classList.add('hidden');
@@ -764,6 +764,24 @@
 
     let saveStatusTimer = null;
     let saveButtonTimer = null;
+    let historyRenderRevision = 0;
+    let investmentsRenderRevision = 0;
+
+    function setPeriodDirty(dirty) {
+      state.periodDirty = !!dirty;
+      const indicator = document.getElementById('period-save-state');
+      if (!indicator) return;
+      indicator.textContent = state.periodDirty ? 'Cambios sin guardar' : 'Período al día';
+      indicator.classList.toggle('is-dirty', state.periodDirty);
+    }
+
+    function markPeriodDirty() {
+      if (state.currentUser) setPeriodDirty(true);
+    }
+
+    function confirmDiscardPeriodChanges() {
+      return !state.periodDirty || confirm('Hay cambios del mes sin guardar. ¿Quieres descartarlos y continuar?');
+    }
 
     function setStatus(message, isError = false, persist = false) {
       const el = document.getElementById('save-status');
@@ -785,13 +803,9 @@
       const originalText = btn.dataset.originalText || btn.textContent;
       btn.dataset.originalText = originalText;
       btn.textContent = 'Guardado ✓';
-      btn.classList.remove('btn-secondary');
-      btn.classList.add('btn-primary');
       if (saveButtonTimer) clearTimeout(saveButtonTimer);
       saveButtonTimer = setTimeout(() => {
         btn.textContent = originalText;
-        btn.classList.remove('btn-primary');
-        btn.classList.add('btn-secondary');
       }, 2200);
     }
 
@@ -801,11 +815,12 @@
 
     async function loadTodayPeriod() {
       state.currentPeriod = getSelectedPeriodId();
-      await loadSelectedPeriod();
+      await loadSelectedPeriod({ force: true });
     }
 
-    async function loadSelectedPeriod() {
+    async function loadSelectedPeriod({ force = false } = {}) {
       if (!state.currentUser) return;
+      if (!force && !confirmDiscardPeriodChanges()) return false;
       state.currentPeriod = getSelectedPeriodId();
       const data = await storageAdapter.getPeriod(state.currentPeriod);
       state.form = ensurePeriodStructure(data || createEmptyPeriodData(), state.profile);
@@ -815,6 +830,8 @@
       renderMonthlySummary();
       renderPeriodContextNote();
       setStatus('');
+      setPeriodDirty(false);
+      return true;
     }
 
     async function saveCurrentPeriod() {
@@ -833,6 +850,7 @@
         state.form.meta.updatedAt = new Date().toISOString();
         state.form.meta.profileSnapshot = buildProfileSnapshot(state.profile);
         await storageAdapter.savePeriod(state.currentPeriod, structuredClone(state.form));
+        setPeriodDirty(false);
         renderPeriodContextNote();
         setStatus(periodAlreadyExists
           ? `✅ ${formatPeriod(state.currentPeriod)} actualizado. El mes anterior se ha reemplazado, no se ha duplicado.`
@@ -917,6 +935,11 @@
                 <button class="btn btn-soft" data-add-dynamic="expenses.monthlyInvestments">Añadir</button>
               </div>
               <div id="list-monthlyInvestments" class="dynamic-list"></div>
+              <div class="monthly-investment-summary" aria-label="Resumen de aportaciones mensuales">
+                <div><span>Renta variable</span><strong id="monthly-investment-variable">0 €</strong></div>
+                <div><span>Renta fija</span><strong id="monthly-investment-fixed">0 €</strong></div>
+                <div><span>Total del mes</span><strong id="monthly-investment-total">0 €</strong></div>
+              </div>
             </div>
             <div class="category-card" style="margin-top:16px;">
               <div class="section-title"><h3>Inversiones acumuladas del hogar</h3><span class="muted">Se calculan automáticamente con lo ya guardado</span></div>
@@ -939,7 +962,8 @@
     function bindMonthlyFieldInputs() {
       document.querySelectorAll('[data-path]').forEach(input => {
         input.addEventListener('input', () => {
-          setValueByStringPath(state.form, input.dataset.path, parseFloat(input.value || 0) || 0);
+          setValueByStringPath(state.form, input.dataset.path, Math.max(0, parseFloat(input.value || 0) || 0));
+          markPeriodDirty();
           renderMonthlySummary();
         });
       });
@@ -955,8 +979,9 @@
       if (target === 'expenses.supermarket') {
         const name = document.getElementById('supermarket-name').value.trim();
         const amount = parseFloat(document.getElementById('supermarket-amount').value || 0);
-        if (!name || !amount) return;
+        if (!name || amount <= 0) return;
         state.form.expenses.supermarket.push({ name, amount });
+        markPeriodDirty();
         document.getElementById('supermarket-name').value = '';
         document.getElementById('supermarket-amount').value = '';
         renderCommonLists();
@@ -966,8 +991,9 @@
       if (target === 'expenses.commonOther') {
         const name = document.getElementById('common-name').value.trim();
         const amount = parseFloat(document.getElementById('common-amount').value || 0);
-        if (!name || !amount) return;
+        if (!name || amount <= 0) return;
         state.form.expenses.commonOther.push({ name, amount });
+        markPeriodDirty();
         document.getElementById('common-name').value = '';
         document.getElementById('common-amount').value = '';
         renderCommonLists();
@@ -979,8 +1005,9 @@
         const type = document.getElementById('invest-type').value;
         const owner = document.getElementById('invest-owner').value;
         const amount = parseFloat(document.getElementById('invest-amount').value || 0);
-        if (!name || !amount) return;
+        if (!name || amount <= 0) return;
         state.form.expenses.monthlyInvestments.push({ name, type, owner, amount });
+        markPeriodDirty();
         document.getElementById('invest-name').value = '';
         document.getElementById('invest-amount').value = '';
         renderCommonLists();
@@ -992,16 +1019,19 @@
     function renderCommonLists() {
       renderSimpleDynamicList('list-supermarket', state.form.expenses.supermarket, item => item.name, index => {
         state.form.expenses.supermarket.splice(index, 1);
+        markPeriodDirty();
         renderCommonLists();
         renderMonthlySummary();
       });
       renderSimpleDynamicList('list-commonOther', state.form.expenses.commonOther, item => item.name, index => {
         state.form.expenses.commonOther.splice(index, 1);
+        markPeriodDirty();
         renderCommonLists();
         renderMonthlySummary();
       });
       renderSimpleDynamicList('list-monthlyInvestments', state.form.expenses.monthlyInvestments, item => `${item.type} · ${item.owner} · ${item.name}`, index => {
         state.form.expenses.monthlyInvestments.splice(index, 1);
+        markPeriodDirty();
         renderCommonLists();
         renderMonthlySummary();
         renderInvestmentsTab();
@@ -1173,7 +1203,8 @@
       document.querySelectorAll('[data-adult-income]').forEach(input => {
         input.addEventListener('input', () => {
           const adultId = input.dataset.adultIncome;
-          state.form.incomes.adults[adultId].mainFixed = parseFloat(input.value || 0) || 0;
+          state.form.incomes.adults[adultId].mainFixed = Math.max(0, parseFloat(input.value || 0) || 0);
+          markPeriodDirty();
           renderMonthlySummary();
         });
       });
@@ -1183,7 +1214,8 @@
           const recurringId = input.dataset.recurringId;
           state.form.incomes.adults[adultId].recurring ||= {};
           state.form.incomes.adults[adultId].recurring[recurringId] ||= { label: 'Ingreso recurrente', amount: 0 };
-          state.form.incomes.adults[adultId].recurring[recurringId].amount = parseFloat(input.value || 0) || 0;
+          state.form.incomes.adults[adultId].recurring[recurringId].amount = Math.max(0, parseFloat(input.value || 0) || 0);
+          markPeriodDirty();
           renderMonthlySummary();
         });
       });
@@ -1192,8 +1224,9 @@
           const adultId = btn.dataset.addAdultIncomeItem;
           const name = document.getElementById(`adult-income-name-${adultId}`).value.trim();
           const amount = parseFloat(document.getElementById(`adult-income-amount-${adultId}`).value || 0);
-          if (!name || !amount) return;
+          if (!name || amount <= 0) return;
           state.form.incomes.adults[adultId].other.push({ name, amount });
+          markPeriodDirty();
           document.getElementById(`adult-income-name-${adultId}`).value = '';
           document.getElementById(`adult-income-amount-${adultId}`).value = '';
           renderPersonCards();
@@ -1205,8 +1238,9 @@
           const adultId = btn.dataset.addAdultExpense;
           const name = document.getElementById(`quick-expense-name-${adultId}`).value.trim();
           const amount = parseFloat(document.getElementById(`quick-expense-amount-${adultId}`).value || 0);
-          if (!name || !amount) return;
+          if (!name || amount <= 0) return;
           state.form.expenses.adults[adultId].push({ name, amount });
+          markPeriodDirty();
           document.getElementById(`quick-expense-name-${adultId}`).value = '';
           document.getElementById(`quick-expense-amount-${adultId}`).value = '';
           renderPersonCards();
@@ -1219,8 +1253,9 @@
           const name = document.getElementById(`child-name-input-${childId}`).value.trim();
           const amount = parseFloat(document.getElementById(`child-amount-${childId}`).value || 0);
           const category = document.getElementById(`child-category-${childId}`).value;
-          if (!name || !amount) return;
+          if (!name || amount <= 0) return;
           state.form.expenses.children[childId].push({ name, amount, category });
+          markPeriodDirty();
           document.getElementById(`child-name-input-${childId}`).value = '';
           document.getElementById(`child-amount-${childId}`).value = '';
           renderPersonCards();
@@ -1232,11 +1267,13 @@
         const archivedAdult = isArchivedMember(adult.id, 'adult');
         renderSimpleDynamicList(`adult-income-list-${adult.id}`, state.form.incomes.adults[adult.id].other, item => item.name, index => {
           state.form.incomes.adults[adult.id].other.splice(index, 1);
+          markPeriodDirty();
           renderPersonCards();
           renderMonthlySummary();
         });
         renderSimpleDynamicList(`adult-expense-list-${adult.id}`, state.form.expenses.adults[adult.id], item => item.name, index => {
           state.form.expenses.adults[adult.id].splice(index, 1);
+          markPeriodDirty();
           renderPersonCards();
           renderMonthlySummary();
         });
@@ -1245,6 +1282,7 @@
         const archivedChild = isArchivedMember(child.id, 'child');
         renderSimpleDynamicList(`child-expense-list-${child.id}`, state.form.expenses.children[child.id], item => `${item.category} · ${item.name}`, index => {
           state.form.expenses.children[child.id].splice(index, 1);
+          markPeriodDirty();
           renderPersonCards();
           renderMonthlySummary();
         });
@@ -1309,9 +1347,18 @@
           </div>
         `;
         row.querySelector('button').addEventListener('click', async () => {
-          state.profile.housing.extraPayments.splice(index, 1);
-          await storageAdapter.saveProfile(state.profile);
-          await renderInvestmentsTab();
+          const [removed] = state.profile.housing.extraPayments.splice(index, 1);
+          try {
+            await storageAdapter.saveProfile(state.profile);
+            await renderInvestmentsTab();
+          } catch (error) {
+            state.profile.housing.extraPayments.splice(index, 0, removed);
+            const status = document.getElementById('housing-status');
+            if (status) {
+              status.style.color = 'var(--bad)';
+              status.textContent = error?.message || 'No se pudo eliminar el pago.';
+            }
+          }
         });
         container.appendChild(row);
       });
@@ -1319,6 +1366,11 @@
 
     async function saveHousingSettings() {
       state.profile.housing ||= structuredClone(createEmptyProfile().housing);
+      const previous = {
+        targetPrice: state.profile.housing.targetPrice,
+        entryPaid: state.profile.housing.entryPaid,
+        updatedAt: state.profile.updatedAt
+      };
       state.profile.housing.targetPrice = num(document.getElementById('housing-target-price')?.value || 0);
       state.profile.housing.entryPaid = num(document.getElementById('housing-entry-paid')?.value || 0);
       state.profile.updatedAt = new Date().toISOString();
@@ -1331,6 +1383,9 @@
         }
         await renderInvestmentsTab();
       } catch (error) {
+        state.profile.housing.targetPrice = previous.targetPrice;
+        state.profile.housing.entryPaid = previous.entryPaid;
+        state.profile.updatedAt = previous.updatedAt;
         const el = document.getElementById('housing-status');
         if (el) {
           el.style.color = 'var(--bad)';
@@ -1342,14 +1397,24 @@
     async function addHousingExtraPayment() {
       const name = document.getElementById('housing-extra-name')?.value.trim();
       const amount = num(document.getElementById('housing-extra-amount')?.value || 0);
-      if (!name || !amount) return;
+      if (!name || amount <= 0) return;
       state.profile.housing ||= structuredClone(createEmptyProfile().housing);
       state.profile.housing.extraPayments ||= [];
-      state.profile.housing.extraPayments.push({ id: createId('housing'), name, amount });
-      document.getElementById('housing-extra-name').value = '';
-      document.getElementById('housing-extra-amount').value = '';
-      await storageAdapter.saveProfile(state.profile);
-      await renderInvestmentsTab();
+      const payment = { id: createId('housing'), name, amount };
+      state.profile.housing.extraPayments.push(payment);
+      try {
+        await storageAdapter.saveProfile(state.profile);
+        document.getElementById('housing-extra-name').value = '';
+        document.getElementById('housing-extra-amount').value = '';
+        await renderInvestmentsTab();
+      } catch (error) {
+        state.profile.housing.extraPayments = state.profile.housing.extraPayments.filter(item => item.id !== payment.id);
+        const status = document.getElementById('housing-status');
+        if (status) {
+          status.style.color = 'var(--bad)';
+          status.textContent = error?.message || 'No se pudo guardar el pago.';
+        }
+      }
     }
 
     function calculateTotals(profile = state.profile, form = state.form) {
@@ -1375,7 +1440,10 @@
       const childrenExpenses = contextChildren.map(child => ({ child, total: sumList(form.expenses?.children?.[child.id] || []) }));
       const dependentExpenses = childrenExpenses.reduce((acc, item) => acc + item.total, 0);
 
-      const investments = sumList(getFundMonthlyInvestments(form.expenses?.monthlyInvestments || []));
+      const investmentSummary = HomeFlowCore.summarizeMonthlyInvestments(
+        getMonthlyInvestments(form.expenses?.monthlyInvestments)
+      );
+      const investments = investmentSummary.total;
       const livingExpenses = commonExpenses + personalExpenses + dependentExpenses;
       const savingsBreakdown = HomeFlowCore.calculateSavingsBreakdown(totalIncome, livingExpenses, investments);
       const totalExpenses = savingsBreakdown.totalOutflows;
@@ -1400,6 +1468,9 @@
         childrenExpenses,
         dependentExpenses,
         investments,
+        variableInvestments: investmentSummary.variable,
+        fixedInvestments: investmentSummary.fixed,
+        otherInvestments: investmentSummary.other,
         livingExpenses,
         longTermInvestment: savingsBreakdown.longTermInvestment,
         fixedIncomeTotal,
@@ -1419,6 +1490,9 @@
       setText('kpi-rate', formatPercent(totals.totalSavingsRate));
       setText('kpi-investments', formatCurrency(totals.investments));
       setText('kpi-total-savings', formatCurrency(totals.totalSavings));
+      setText('monthly-investment-variable', formatCurrency(totals.variableInvestments));
+      setText('monthly-investment-fixed', formatCurrency(totals.fixedInvestments));
+      setText('monthly-investment-total', formatCurrency(totals.investments));
 
       const savingsKpi = document.getElementById('kpi-savings').closest('.kpi');
       savingsKpi.classList.toggle('positive', totals.savings >= 0);
@@ -1436,6 +1510,8 @@
         <div class="total-item"><strong>Gastos personales</strong><span class="amount">${formatCurrency(totals.personalExpenses)}</span></div>
         <div class="total-item"><strong>Gastos hijos</strong><span class="amount">${formatCurrency(totals.dependentExpenses)}</span></div>
         <div class="total-item"><strong>Gastos de vida</strong><span class="amount">${formatCurrency(totals.livingExpenses)}</span></div>
+        <div class="total-item"><strong>Aportado a renta variable</strong><span class="amount">${formatCurrency(totals.variableInvestments)}</span></div>
+        <div class="total-item"><strong>Aportado a renta fija</strong><span class="amount">${formatCurrency(totals.fixedInvestments)}</span></div>
         <div class="total-item"><strong>Inversión a largo plazo</strong><span class="amount">${formatCurrency(totals.investments)}</span></div>
       `;
 
@@ -1452,7 +1528,9 @@
 
     async function refreshHistoricalView() {
       if (!state.currentUser) return;
+      const revision = ++historyRenderRevision;
       const all = await storageAdapter.getAllPeriods();
+      if (revision !== historyRenderRevision) return;
       const rows = Object.entries(all)
         .map(([period, data]) => ({ period, data, totals: calculateTotalsForData(data) }))
         .sort((a, b) => a.period.localeCompare(b.period));
@@ -1482,17 +1560,18 @@
     }
 
     function renderHistoryMetrics(rows) {
-      const income = rows.reduce((acc, row) => acc + row.totals.totalIncome, 0);
-      const expenses = rows.reduce((acc, row) => acc + row.totals.totalExpenses, 0);
-      const cumulativeSavings = rows.reduce((acc, row) => acc + row.totals.savings, 0);
-      const cumulativeTotalSavings = rows.reduce((acc, row) => acc + row.totals.totalSavings, 0);
-      const avgRate = rows.length ? rows.reduce((acc, row) => acc + row.totals.totalSavingsRate, 0) / rows.length : 0;
-      setText('hist-total-income', formatCurrency(income));
-      setText('hist-total-expenses', formatCurrency(expenses));
-      setText('hist-total-savings', formatCurrency(cumulativeSavings));
-      setText('hist-total-savings-total', formatCurrency(cumulativeTotalSavings));
-      setText('hist-average-rate', formatPercent(avgRate));
-      setText('hist-count', String(rows.length));
+      const summary = HomeFlowCore.summarizeSavingsPeriods(rows.map(row => ({
+        income: row.totals.totalIncome,
+        totalOutflows: row.totals.totalExpenses,
+        availableSavings: row.totals.savings,
+        totalSavings: row.totals.totalSavings
+      })));
+      setText('hist-total-income', formatCurrency(summary.income));
+      setText('hist-total-expenses', formatCurrency(summary.totalOutflows));
+      setText('hist-total-savings', formatCurrency(summary.availableSavings));
+      setText('hist-total-savings-total', formatCurrency(summary.totalSavings));
+      setText('hist-average-rate', formatPercent(summary.totalSavingsRate));
+      setText('hist-count', String(summary.count));
     }
 
     function renderHistoricalPersonalSavings(rows) {
@@ -1515,7 +1594,7 @@
         const adultByOwnerName = new Map(adults.map(adult => [String(adult.name || '').trim().toLocaleLowerCase('es'), adult]));
         const directInvestments = new Map(adults.map(adult => [adult.id, 0]));
         let householdInvestments = 0;
-        getFundMonthlyInvestments(row.data?.expenses?.monthlyInvestments || []).forEach(item => {
+        getMonthlyInvestments(row.data?.expenses?.monthlyInvestments).forEach(item => {
           const ownerKey = String(item.owner || 'Hogar').trim().toLocaleLowerCase('es');
           const adult = adultByOwnerName.get(ownerKey);
           if (adult) {
@@ -1641,11 +1720,12 @@
       });
       document.querySelectorAll('[data-open-period]').forEach(btn => {
         btn.addEventListener('click', async () => {
+          if (!confirmDiscardPeriodChanges()) return;
           const [year, month] = btn.dataset.openPeriod.split('-');
           document.getElementById('period-year').value = year;
           document.getElementById('period-month').value = month;
           activateTab('mensual');
-          await loadSelectedPeriod();
+          await loadSelectedPeriod({ force: true });
           window.scrollTo({ top: 0, behavior: 'smooth' });
         });
       });
@@ -1874,6 +1954,18 @@
     function buildChart(canvasId, config) {
       const canvas = document.getElementById(canvasId);
       if (!canvas) return;
+      if (typeof Chart === 'undefined') {
+        canvas.hidden = true;
+        if (!canvas.parentElement?.querySelector('.chart-load-error')) {
+          const message = document.createElement('div');
+          message.className = 'empty-box chart-load-error';
+          message.textContent = 'No se pudo cargar el gráfico. El resto de datos sigue disponible.';
+          canvas.insertAdjacentElement('afterend', message);
+        }
+        return;
+      }
+      canvas.hidden = false;
+      canvas.parentElement?.querySelector('.chart-load-error')?.remove();
       if (state.charts[canvasId]) state.charts[canvasId].destroy();
       state.charts[canvasId] = new Chart(canvas, config);
     }
@@ -1971,12 +2063,6 @@
       `).join('');
     }
 
-    function parseLocalDate(dateStr) {
-      const [year, month, day] = String(dateStr || '').split('-').map(Number);
-      if (!year || !month || !day) return null;
-      return new Date(year, month - 1, day, 12, 0, 0, 0);
-    }
-
     function formatDateInput(date) {
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -1984,50 +2070,8 @@
       return `${year}-${month}-${day}`;
     }
 
-    function addMonthsToDate(dateStr, months) {
-      const base = parseLocalDate(dateStr);
-      if (!base) return null;
-      const safeMonths = Math.max(1, parseInt(months || 0, 10) || 0);
-      const year = base.getFullYear();
-      const monthIndex = base.getMonth();
-      const day = base.getDate();
-      const targetMonthIndex = monthIndex + safeMonths;
-      const targetYear = year + Math.floor(targetMonthIndex / 12);
-      const normalizedMonth = ((targetMonthIndex % 12) + 12) % 12;
-      const lastDayOfTargetMonth = new Date(targetYear, normalizedMonth + 1, 0).getDate();
-      const clampedDay = Math.min(day, lastDayOfTargetMonth);
-      return new Date(targetYear, normalizedMonth, clampedDay, 12, 0, 0, 0);
-    }
-
-    function calculateDepositEstimate(amount, rate, start, durationMonths, nowDate = null) {
-      const startDate = parseLocalDate(start);
-      const endDate = addMonthsToDate(start, durationMonths);
-      if (!startDate || !endDate) {
-        return { end: '', totalDays: 0, daysRemaining: 0, grossInterest: 0, interest: 0, finalAmount: round2(amount), matured: false, endingSoon: false, dueToday: false };
-      }
-      const totalDays = Math.max(0, Math.round((endDate - startDate) / (1000 * 60 * 60 * 24)));
-      const today = nowDate ? new Date(nowDate) : new Date();
-      today.setHours(12, 0, 0, 0);
-      const rawDaysRemaining = Math.round((endDate - today) / (1000 * 60 * 60 * 24));
-      const matured = rawDaysRemaining < 0;
-      const dueToday = rawDaysRemaining === 0;
-      const daysRemaining = Math.max(0, rawDaysRemaining);
-      const overdueDays = matured ? Math.abs(rawDaysRemaining) : 0;
-      const endingSoon = !matured && !dueToday && daysRemaining < 10;
-      const grossInterest = amount * (rate / 100) * (totalDays / 365);
-      const netInterest = grossInterest * 0.81;
-      return {
-        end: formatDateInput(endDate),
-        totalDays,
-        daysRemaining,
-        overdueDays,
-        grossInterest: round2(grossInterest),
-        interest: round2(netInterest),
-        finalAmount: round2(amount + netInterest),
-        matured,
-        endingSoon,
-        dueToday
-      };
+    function calculateDepositEstimate(amount, rate, start, durationMonths, nowDate = null, withholdingRate = 19) {
+      return HomeFlowCore.calculateDepositEstimate(amount, rate, start, durationMonths, nowDate, withholdingRate);
     }
 
     async function addSavingsAccount() {
@@ -2251,17 +2295,19 @@
       const rate = parseFloat(document.getElementById('deposit-rate').value || 0);
       const start = document.getElementById('deposit-start').value;
       const durationMonths = parseInt(document.getElementById('deposit-duration-months').value || 0, 10);
-      if (!name || !bank || !amount || !start || !durationMonths) {
+      const withholdingRate = parseFloat(document.getElementById('deposit-withholding').value || 0);
+      if (!name || !bank || amount <= 0 || rate < 0 || !start || !durationMonths) {
         return setDepositStatus('Completa todos los campos del depósito.', true);
       }
       if (durationMonths < 1) {
         return setDepositStatus('La duración debe ser de al menos 1 mes.', true);
       }
-      const estimate = calculateDepositEstimate(amount, rate, start, durationMonths);
+      const estimate = calculateDepositEstimate(amount, rate, start, durationMonths, null, withholdingRate);
       currentDeposits().push({ id: createId('deposit'), name, bank, owner, amount, rate, start, durationMonths, createdAt: new Date().toISOString(), ...estimate });
       try {
         await storageAdapter.saveProfile(state.profile);
         ['deposit-name','deposit-bank','deposit-amount','deposit-rate','deposit-start','deposit-duration-months'].forEach(id => document.getElementById(id).value = '');
+        document.getElementById('deposit-withholding').value = '19';
         document.getElementById('deposit-owner').value = 'Hogar';
         setDepositStatus('Depósito añadido correctamente.');
         await renderInvestmentsTab();
@@ -2285,32 +2331,41 @@ async function addHistoricalInvestment() {
       const owner = document.getElementById('historical-investment-owner')?.value || 'Hogar';
       const amount = num(document.getElementById('historical-investment-amount')?.value || 0);
       const status = document.getElementById('historical-investment-status');
-      if (!name || !amount) {
+      if (!name || amount <= 0) {
         if (status) {
           status.style.color = 'var(--bad)';
           status.textContent = 'Completa concepto e importe.';
         }
         return;
       }
-      currentHistoricalInvestmentPositions().push({
+      const investment = {
         id: createId('histinv'),
         name,
         type,
         owner,
         amount,
         createdAt: new Date().toISOString()
-      });
-      document.getElementById('historical-investment-name').value = '';
-      document.getElementById('historical-investment-type').value = 'Renta variable';
-      document.getElementById('historical-investment-owner').value = 'Hogar';
-      document.getElementById('historical-investment-amount').value = '';
-      await storageAdapter.saveProfile(state.profile);
-      if (status) {
-        status.style.color = 'var(--good)';
-        status.textContent = 'Inversión previa guardada.';
-        setTimeout(() => { status.textContent = ''; }, 2500);
+      };
+      currentHistoricalInvestmentPositions().push(investment);
+      try {
+        await storageAdapter.saveProfile(state.profile);
+        document.getElementById('historical-investment-name').value = '';
+        document.getElementById('historical-investment-type').value = 'Renta variable';
+        document.getElementById('historical-investment-owner').value = 'Hogar';
+        document.getElementById('historical-investment-amount').value = '';
+        if (status) {
+          status.style.color = 'var(--good)';
+          status.textContent = 'Inversión previa guardada.';
+          setTimeout(() => { status.textContent = ''; }, 2500);
+        }
+        await renderInvestmentsTab();
+      } catch (error) {
+        state.profile.investmentPositions = currentHistoricalInvestmentPositions().filter(item => item.id !== investment.id);
+        if (status) {
+          status.style.color = 'var(--bad)';
+          status.textContent = error?.message || 'No se pudo guardar la inversión.';
+        }
       }
-      await renderInvestmentsTab();
     }
 
     function renderHistoricalInvestmentList() {
@@ -2347,14 +2402,25 @@ async function addHistoricalInvestment() {
             alert('Introduce un importe válido mayor que cero.');
             return;
           }
+          const previousAmount = currentHistoricalInvestmentPositions()[realIndex].amount;
           currentHistoricalInvestmentPositions()[realIndex].amount = round2(parsed);
-          await storageAdapter.saveProfile(state.profile);
-          await renderInvestmentsTab();
+          try {
+            await storageAdapter.saveProfile(state.profile);
+            await renderInvestmentsTab();
+          } catch (error) {
+            currentHistoricalInvestmentPositions()[realIndex].amount = previousAmount;
+            alert(error?.message || 'No se pudo actualizar la inversión.');
+          }
         });
         row.querySelector('.btn-danger').addEventListener('click', async () => {
-          currentHistoricalInvestmentPositions().splice(realIndex, 1);
-          await storageAdapter.saveProfile(state.profile);
-          await renderInvestmentsTab();
+          const [removed] = currentHistoricalInvestmentPositions().splice(realIndex, 1);
+          try {
+            await storageAdapter.saveProfile(state.profile);
+            await renderInvestmentsTab();
+          } catch (error) {
+            currentHistoricalInvestmentPositions().splice(realIndex, 0, removed);
+            alert(error?.message || 'No se pudo eliminar la inversión.');
+          }
         });
         container.appendChild(row);
       });
@@ -2463,7 +2529,7 @@ async function addHistoricalInvestment() {
       if (!amountInput) return;
       const amount = num(amountInput.value || 0);
       const note = noteInput ? noteInput.value.trim() : '';
-      if (!amount) return;
+      if (amount <= 0) return;
 
       const breakdown = buildInvestmentOwnerBreakdown((await getAggregatedMonthlyInvestments()).rows, currentDeposits());
       const ownerData = breakdown.find(item => item.owner === ownerName);
@@ -2478,26 +2544,41 @@ async function addHistoricalInvestment() {
         return;
       }
 
-      currentInvestmentTransfers().push({
+      const transfer = {
         id: createId('transfer'),
         kind,
         owner: ownerName || 'Hogar',
         amount,
         note,
         createdAt: new Date().toISOString()
-      });
-      await storageAdapter.saveProfile(state.profile);
-      if (amountInput) amountInput.value = '';
-      if (noteInput) noteInput.value = '';
-      await renderInvestmentsTab();
+      };
+      currentInvestmentTransfers().push(transfer);
+      try {
+        await storageAdapter.saveProfile(state.profile);
+        if (amountInput) amountInput.value = '';
+        if (noteInput) noteInput.value = '';
+        await renderInvestmentsTab();
+      } catch (error) {
+        state.profile.investmentTransfers = currentInvestmentTransfers().filter(item => item.id !== transfer.id);
+        const status = document.getElementById(statusId);
+        if (status) {
+          status.textContent = error?.message || 'No se pudo guardar el movimiento.';
+          status.style.color = 'var(--bad)';
+        }
+      }
     }
 
     async function removeInvestmentTransfer(transferId) {
       const idx = currentInvestmentTransfers().findIndex(item => item.id === transferId);
       if (idx === -1) return;
-      currentInvestmentTransfers().splice(idx, 1);
-      await storageAdapter.saveProfile(state.profile);
-      await renderInvestmentsTab();
+      const [removed] = currentInvestmentTransfers().splice(idx, 1);
+      try {
+        await storageAdapter.saveProfile(state.profile);
+        await renderInvestmentsTab();
+      } catch (error) {
+        currentInvestmentTransfers().splice(idx, 0, removed);
+        setDepositStatus(error?.message || 'No se pudo eliminar el movimiento.', true);
+      }
     }
 
     function getSavedFixedIncomeSales() {
@@ -2508,7 +2589,7 @@ async function addHistoricalInvestment() {
       return getSavedFixedIncomeSales().reduce((acc, item) => acc + num(item.amount), 0);
     }
 
-    async function closeDeposit(depositId) {
+    async function closeDeposit(depositId, actualNetInterest = null) {
       const deposit = currentDeposits().find(item => item.id === depositId);
       if (!deposit || isDepositClosed(deposit)) return;
       const previousLifecycle = {
@@ -2518,7 +2599,7 @@ async function addHistoricalInvestment() {
       };
       deposit.status = 'closed';
       deposit.closedAt = new Date().toISOString();
-      deposit.closedInterest = round2(deposit.interest || 0);
+      deposit.closedInterest = round2(actualNetInterest ?? deposit.interest ?? 0);
       try {
         await storageAdapter.saveProfile(state.profile);
         await renderInvestmentsTab();
@@ -2632,7 +2713,8 @@ async function addHistoricalInvestment() {
             deposit.rate,
             deposit.start,
             deposit.durationMonths || deposit.months || 1,
-            todayDevice
+            todayDevice,
+            deposit.withholdingRate ?? 19
           )
         }))
         .sort((a, b) => {
@@ -2662,7 +2744,8 @@ async function addHistoricalInvestment() {
             <div class="compact-row-subtitle">${escapeHtml(deposit.bank)} · ${deposit.start} → ${deposit.end}</div>
             <div class="deposit-metrics">
               <span>Capital <strong>${formatCurrency(deposit.amount)}</strong></span>
-              <span>Interés neto <strong>${formatCurrency(deposit.interest || 0)}</strong></span>
+              <span>Interés bruto <strong>${formatCurrency(deposit.grossInterest || 0)}</strong></span>
+              <span>Neto (ret. ${formatPercent(deposit.withholdingRate ?? 19)}) <strong>${formatCurrency(deposit.interest || 0)}</strong></span>
               <span>Total <strong>${formatCurrency(deposit.finalAmount)}</strong></span>
             </div>
           </div>
@@ -2685,9 +2768,17 @@ async function addHistoricalInvestment() {
           }
         });
         row.querySelector('[data-close-deposit]')?.addEventListener('click', async () => {
-          const confirmedClose = confirm(`¿Marcar "${deposit.name}" como cobrado? Desaparecerá del patrimonio y su interés neto quedará registrado en ${new Date().getFullYear()}.`);
-          if (!confirmedClose) return;
-          await closeDeposit(deposit.id);
+          const entered = prompt(
+            `Introduce el interés neto real cobrado de "${deposit.name}". Al aceptar, el depósito desaparecerá del patrimonio y el interés quedará en el histórico.`,
+            String(round2(deposit.interest || 0)).replace('.', ',')
+          );
+          if (entered === null) return;
+          const actualNetInterest = HomeFlowCore.parseMoneyInput(entered);
+          if (!Number.isFinite(actualNetInterest) || actualNetInterest < 0) {
+            alert('Introduce un importe válido, igual o mayor que cero.');
+            return;
+          }
+          await closeDeposit(deposit.id, actualNetInterest);
         });
         list.appendChild(row);
       });
@@ -2700,8 +2791,10 @@ async function addHistoricalInvestment() {
     }
 
     async function renderInvestmentsTab() {
+      const revision = ++investmentsRenderRevision;
       updateOwnerSelectOptions();
       const allPeriods = state.currentUser ? await storageAdapter.getAllPeriods() : {};
+      if (revision !== investmentsRenderRevision) return;
       const housingSummary = calculateHousingSummary(state.profile, allPeriods);
       const housing = state.profile.housing || createEmptyProfile().housing;
       setText('housing-total-price', formatCurrency(housingSummary.totalPrice));
@@ -2728,6 +2821,7 @@ async function addHistoricalInvestment() {
       renderSavingsAccounts();
 
       const aggregated = await getAggregatedMonthlyInvestments();
+      if (revision !== investmentsRenderRevision) return;
       const ownerBreakdownContainer = document.getElementById('investments-by-owner');
       const ownerBreakdown = buildInvestmentOwnerBreakdown(aggregated.rows, deposits, savingsAccounts);
       if (ownerBreakdownContainer) {
@@ -3107,6 +3201,7 @@ async function addHistoricalInvestment() {
       if (targetTab === 'inversiones') renderInvestmentsTab();
       if (targetTab === 'configuracion') renderProfileConfig();
       bindAccordionBehavior(document.getElementById(`tab-${targetTab}`) || document);
+      window.scrollTo({ top: 0, behavior: 'auto' });
       window.requestAnimationFrame(() => {
         Object.values(state.charts || {}).forEach(chart => chart?.resize?.());
       });
@@ -3159,14 +3254,20 @@ async function addHistoricalInvestment() {
 
 
     async function refreshCurrentPeriodAfterProfileChange() {
-      state.currentPeriod = getSelectedPeriodId();
-      const savedPeriod = await storageAdapter.getPeriod(state.currentPeriod);
-      state.form = ensurePeriodStructure(savedPeriod || createEmptyPeriodData(), state.profile);
+      const preserveUnsavedMonth = state.periodDirty && !!state.currentPeriod;
+      if (preserveUnsavedMonth) {
+        state.form = ensurePeriodStructure(state.form, state.profile);
+      } else {
+        state.currentPeriod = getSelectedPeriodId();
+        const savedPeriod = await storageAdapter.getPeriod(state.currentPeriod);
+        state.form = ensurePeriodStructure(savedPeriod || createEmptyPeriodData(), state.profile);
+      }
       state.form.meta ||= {};
       state.form.meta.profileSnapshot = buildProfileSnapshot(state.profile);
       renderMonthlyArea();
       renderMonthlySummary();
       renderPeriodContextNote();
+      setPeriodDirty(preserveUnsavedMonth);
     }
 
     async function finishFamilySetup(profilePayload, { closeSetup = true, source = 'setup' } = {}) {
@@ -3187,11 +3288,11 @@ async function addHistoricalInvestment() {
       prepared.updatedAt = new Date().toISOString();
       prepared.configured = prepared.adults.length > 0;
 
-      state.profile = normalizeProfile(prepared);
-      state.profile.configured = state.profile.adults.length > 0;
-      state.setupDraft = structuredClone(state.profile);
-
-      await storageAdapter.saveProfile(state.profile);
+      const nextProfile = normalizeProfile(prepared);
+      nextProfile.configured = nextProfile.adults.length > 0;
+      await storageAdapter.saveProfile(nextProfile);
+      state.profile = nextProfile;
+      state.setupDraft = structuredClone(nextProfile);
 
       renderProfileStatus();
       renderProfileConfig();
@@ -3230,6 +3331,7 @@ async function addHistoricalInvestment() {
       }
       state.profile = createEmptyProfile();
       state.form = createEmptyPeriodData();
+      setPeriodDirty(false);
       renderProfileStatus();
       renderProfileConfig();
       renderMonthlyArea();
@@ -3336,6 +3438,10 @@ async function addHistoricalInvestment() {
     }
 
     async function exportHistoryExcel() {
+      if (typeof XLSX === 'undefined') {
+        setStatus('No se pudo cargar el generador de Excel. Recarga la página e inténtalo otra vez.', true);
+        return;
+      }
       const all = await storageAdapter.getAllPeriods();
       const ordered = Object.entries(all).sort((a, b) => a[0].localeCompare(b[0]));
       if (!ordered.length) return;
@@ -3349,13 +3455,14 @@ async function addHistoricalInvestment() {
           Gastos_Personales: round2(totals.personalExpenses),
           Gastos_Hijos: round2(totals.dependentExpenses),
           Gastos_Vida: round2(totals.livingExpenses),
+          Aportacion_Renta_Variable: round2(totals.variableInvestments),
+          Aportacion_Renta_Fija: round2(totals.fixedInvestments),
           Inversion_Largo_Plazo: round2(totals.investments),
           Salidas_Totales: round2(totals.totalExpenses),
           Ahorro_Disponible: round2(totals.savings),
           Tasa_Disponible: round2(totals.savingsRate),
           Ahorro_Total: round2(totals.totalSavings),
-          Tasa_Ahorro_Total: round2(totals.totalSavingsRate),
-          Renta_Fija_Acumulada: round2(totals.fixedIncomeTotal)
+          Tasa_Ahorro_Total: round2(totals.totalSavingsRate)
         };
       });
       const incomeRows = ordered.flatMap(([period, data]) => buildIncomeRowsForPeriod(period, data));
@@ -3372,11 +3479,23 @@ async function addHistoricalInvestment() {
           Interes_Anual_Estimado: projection.annualInterest
         };
       });
+      const interestRows = HomeFlowCore.groupInvestmentInterestByYear(
+        currentDeposits(),
+        currentSavingsAccounts()
+      ).flatMap(group => group.events.map(event => ({
+        Año: group.year,
+        Fecha: event.date,
+        Origen: event.sourceType === 'deposit' ? 'Depósito' : 'Cuenta remunerada',
+        Producto: event.sourceName,
+        Titular: event.owner || 'Hogar',
+        Importe_Neto: round2(event.amount)
+      })));
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), 'Resumen');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(incomeRows), 'Ingresos');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(expenseRows), 'Gastos');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(investmentRows), 'Inversiones');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(savingsAccountRows), 'Cuentas remuneradas');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(interestRows), 'Intereses cobrados');
       XLSX.writeFile(wb, 'HomeFlow3_historico.xlsx');
     }
 
@@ -3465,6 +3584,27 @@ async function addHistoricalInvestment() {
         margin: { left: margin, right: margin },
         styles: { fontSize: 9, cellPadding: 6 },
         headStyles: { fillColor: [6, 182, 212] },
+        alternateRowStyles: { fillColor: [239, 250, 252] }
+      });
+
+      const paidInterest = HomeFlowCore.groupInvestmentInterestByYear(
+        currentDeposits(),
+        currentSavingsAccounts()
+      ).flatMap(group => group.events.map(event => [
+        event.date || '',
+        event.sourceType === 'deposit' ? 'Depósito' : 'Cuenta remunerada',
+        event.sourceName,
+        event.owner || 'Hogar',
+        formatCurrency(event.amount)
+      ]));
+
+      doc.autoTable({
+        startY: doc.lastAutoTable.finalY + 20,
+        head: [['Fecha', 'Origen', 'Producto', 'Titular', 'Interés neto']],
+        body: paidInterest.length ? paidInterest : [['Sin intereses cobrados', '', '', '', '']],
+        margin: { left: margin, right: margin },
+        styles: { fontSize: 9, cellPadding: 6 },
+        headStyles: { fillColor: [14, 116, 144] },
         alternateRowStyles: { fillColor: [239, 250, 252] }
       });
 

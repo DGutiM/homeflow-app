@@ -13,6 +13,7 @@
 - Renta fija solo suma elementos clasificados como renta fija.
 - Fondo, ETF, acciones y renta variable se agrupan como renta variable.
 - Las aportaciones mensuales continúan alimentando automáticamente la cartera.
+- Toda aportación mensual, sea renta variable o fija, se descuenta del ahorro disponible y se conserva dentro del ahorro total.
 - Un depósito cobrado deja de formar parte del patrimonio.
 - El interés neto del depósito queda agrupado por el año en que se cobra.
 - Los depósitos antiguos con `sentToCash` se interpretan como cerrados sin alterar el dato original.
@@ -22,6 +23,7 @@
 - Un período se identifica por `AAAA-MM` y se sobrescribe por esa clave.
 - Si el selector de mes cambia sin cargarlo, el guardado se bloquea para evitar copiar un mes en otro.
 - La interfaz debe indicar claramente si el período es nuevo o ha sido actualizado.
+- Los cambios pendientes deben quedar visibles y no se pueden descartar por accidente al cargar otro mes o cerrar sesión.
 
 ## Etapa 3 · Interfaz móvil
 
@@ -43,6 +45,7 @@
 - Añadir pruebas de clasificación, importes, ciclo de vida de depósitos y actualización idempotente de meses.
 - Eliminar funciones sin llamadas y controles antiguos ya desconectados de la interfaz.
 - En una siguiente versión, dividir `app.js` por dominios cuando haya una herramienta de empaquetado.
+- Versionar las reglas de seguridad de Firestore en el repositorio cuando se disponga de acceso al proyecto Firebase.
 
 ## Etapa posterior
 

@@ -5,7 +5,7 @@
   "display": "standalone",
   "background_color": "#f3f7fb",
   "theme_color": "#0f766e",
-  "description": "Control mensual del hogar con ahorro neto, tasa de ahorro, histórico y exportación a Excel.",
+  "description": "Control familiar de ingresos, gastos, ahorro, inversiones y patrimonio.",
   "icons": [
     {
       "src": "icon.png",

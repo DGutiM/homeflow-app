@@ -9,15 +9,15 @@
   <link rel="icon" href="icon.png" type="image/png" />
   <link rel="apple-touch-icon" href="icon.png" />
   <link rel="manifest" href="manifest.json" />
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="homeflow-core.js?v=20260801-1"></script>
-  <link rel="stylesheet" href="styles.css?v=20260801-1" />
+  <script src="homeflow-core.js?v=20260926-1"></script>
+  <link rel="stylesheet" href="styles.css?v=20260926-1" />
 </head>
 <body>
   <div class="app-shell">
@@ -125,6 +125,7 @@
               <h2>Período</h2>
               <p class="subtle">Carga el mes, rellena los datos y guarda.</p>
             </div>
+            <span class="period-save-state" id="period-save-state" role="status" aria-live="polite">Período al día</span>
           </div>
           <div class="period-controls">
             <div>
@@ -169,7 +170,7 @@
             </div>
             <div class="savings-explainer">
               <strong>Disponible</strong>: lo que queda después de gastos e inversión.
-              <strong>Total</strong>: disponible + fondos indexados destinados al largo plazo.
+              <strong>Total</strong>: disponible + todas las aportaciones a renta variable y renta fija del mes.
             </div>
           </div>
         </details>
@@ -208,7 +209,7 @@
 
         <details class="workspace-accordion">
           <summary>
-            <span><strong>Resumen histórico</strong><small>Totales y media de ahorro</small></span>
+            <span><strong>Resumen histórico</strong><small>Totales y tasa global de ahorro</small></span>
           </summary>
           <div class="accordion-body">
             <div class="kpi-grid history-kpi-grid">
@@ -216,7 +217,7 @@
               <div class="kpi"><div class="kpi-label">Salidas totales</div><div class="kpi-value" id="hist-total-expenses">0 €</div></div>
               <div class="kpi positive"><div class="kpi-label">Disponible acumulado</div><div class="kpi-value" id="hist-total-savings">0 €</div></div>
               <div class="kpi positive"><div class="kpi-label">Ahorro total acumulado</div><div class="kpi-value" id="hist-total-savings-total">0 €</div></div>
-              <div class="kpi info"><div class="kpi-label">Tasa total media</div><div class="kpi-value" id="hist-average-rate">0 %</div></div>
+              <div class="kpi info"><div class="kpi-label">Tasa de ahorro total</div><div class="kpi-value" id="hist-average-rate">0 %</div></div>
               <div class="kpi"><div class="kpi-label">Meses</div><div class="kpi-value" id="hist-count">0</div></div>
             </div>
           </div>
@@ -289,7 +290,7 @@
                     <th>Gastos comunes</th>
                     <th>Gastos personales</th>
                     <th>Gastos hijos</th>
-                    <th>Renta variable mes</th>
+                    <th>Inversión del mes</th>
                     <th>Salidas totales</th>
                     <th>Ahorro disponible</th>
                     <th>Disponible acumulado</th>
@@ -411,7 +412,7 @@
           <div class="section-title">
             <div>
               <h2>Vivienda</h2>
-              <p class="subtle">Sigue cuánto lleváis pagado del piso y cuánto os queda.</p>
+                  <p class="subtle">Sigue los desembolsos registrados de la vivienda. Si una cuota hipotecaria incluye intereses, este progreso no equivale al capital amortizado del préstamo.</p>
             </div>
           </div>
           <div class="grid grid-2">
@@ -470,7 +471,7 @@
           <div class="accordion-body">
         <div class="card accordion-inner-card deposit-card">
           <h2>Nuevo depósito</h2>
-          <p class="subtle">Introduce la fecha de inicio y el número de meses. La fecha de vencimiento se calcula sola y se mostrarán alertas cuando quede poco para vencer.</p>
+          <p class="subtle">Introduce la fecha de inicio y el número de meses. La fecha de vencimiento se calcula sola. La retención solo se usa para estimar el interés neto y puedes ajustarla.</p>
           <div class="grid grid-2">
             <div>
               <label for="deposit-name">Nombre del depósito</label>
@@ -499,6 +500,10 @@
             <div>
               <label for="deposit-duration-months">Duración (meses)</label>
               <input id="deposit-duration-months" type="number" min="1" step="1" placeholder="12" />
+            </div>
+            <div>
+              <label for="deposit-withholding">Retención estimada (%)</label>
+              <input id="deposit-withholding" type="number" min="0" max="100" step="0.01" value="19" />
             </div>
           </div>
           <div class="actions">
@@ -532,7 +537,7 @@
             <div class="kpi-grid deposit-summary-grid">
               <div class="kpi info"><div class="kpi-label">Depósitos activos</div><div class="kpi-value" id="deposit-active-count">0</div></div>
               <div class="kpi"><div class="kpi-label">Capital activo</div><div class="kpi-value" id="deposit-active-capital">0 €</div></div>
-              <div class="kpi positive"><div class="kpi-label">Interés pendiente</div><div class="kpi-value" id="deposit-pending-interest">0 €</div></div>
+              <div class="kpi positive"><div class="kpi-label">Interés neto pendiente</div><div class="kpi-value" id="deposit-pending-interest">0 €</div></div>
               <div class="kpi info"><div class="kpi-label">Total al vencimiento</div><div class="kpi-value" id="deposit-maturity-total">0 €</div></div>
             </div>
             <div id="deposit-list" class="dynamic-list"></div>
@@ -596,6 +601,7 @@
               <div class="kpi"><div class="kpi-label">Objetivo</div><div class="kpi-value" id="compound-target-status">—</div></div>
             </div>
             <div class="compound-insight" id="compound-insight"></div>
+            <div class="footer-note">Simulación orientativa con rentabilidad constante y aportaciones al inicio de cada mes; no representa una previsión garantizada.</div>
           </div>
         </details>
 
@@ -869,6 +875,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=20260801-1"></script>
+  <script src="app.js?v=20260926-1"></script>
 </body>
 </html>

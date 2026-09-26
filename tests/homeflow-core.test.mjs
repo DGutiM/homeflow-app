@@ -32,6 +32,15 @@ assert.equal(
   8608.39
 );
 
+assert.deepEqual(
+  core.summarizeMonthlyInvestments([
+    { type: 'Fondo', amount: 300 },
+    { type: 'Renta fija', amount: 200 },
+    { type: 'Otra inversión', amount: 50 }
+  ]),
+  { variable: 300, fixed: 200, other: 50, total: 550 }
+);
+
 const closedLegacy = core.normalizeDepositLifecycle({
   name: 'Depósito antiguo',
   sentToCash: true,
@@ -59,6 +68,34 @@ assert.deepEqual(
   ]),
   { count: 2, capital: 1500, pendingInterest: 25, maturityTotal: 1525 }
 );
+
+const depositEstimate = core.calculateDepositEstimate(
+  10000,
+  3,
+  '2026-01-31',
+  1,
+  new Date(2026, 1, 20, 12),
+  19
+);
+assert.equal(depositEstimate.end, '2026-02-28');
+assert.equal(depositEstimate.totalDays, 28);
+assert.equal(depositEstimate.daysRemaining, 8);
+assert.equal(depositEstimate.endingSoon, true);
+assert.equal(depositEstimate.grossInterest, 23.01);
+assert.equal(depositEstimate.interest, 18.64);
+assert.equal(depositEstimate.finalAmount, 10018.64);
+
+const maturedDepositEstimate = core.calculateDepositEstimate(
+  1000,
+  2,
+  '2025-01-01',
+  12,
+  new Date(2026, 0, 2, 12),
+  0
+);
+assert.equal(maturedDepositEstimate.matured, true);
+assert.equal(maturedDepositEstimate.overdueDays, 1);
+assert.equal(maturedDepositEstimate.interest, maturedDepositEstimate.grossInterest);
 
 const interestYears = core.groupClosedDepositInterestByYear([
   closedLegacy,
@@ -123,6 +160,21 @@ assert.deepEqual(
     totalSavings: -100,
     totalSavingsRate: 0,
     totalOutflows: 150
+  }
+);
+
+assert.deepEqual(
+  core.summarizeSavingsPeriods([
+    { income: 1000, totalOutflows: 900, availableSavings: 50, totalSavings: 100 },
+    { income: 3000, totalOutflows: 2000, availableSavings: 700, totalSavings: 1000 }
+  ]),
+  {
+    income: 4000,
+    totalOutflows: 2900,
+    availableSavings: 750,
+    totalSavings: 1100,
+    totalSavingsRate: 27.5,
+    count: 2
   }
 );
 

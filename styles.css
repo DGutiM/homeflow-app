@@ -170,9 +170,33 @@
     .accordion-stack > .workspace-accordion { margin-bottom: 0; }
     .mobile-save-dock { display: flex; justify-content: flex-end; margin-top: 16px; }
     .period-card { padding: 16px 18px; margin-bottom: 12px; }
-    .period-heading { margin-bottom: 10px; }
+    .period-heading {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
     .period-heading h2 { margin: 0; font-size: 1.08rem; }
     .period-heading .subtle { margin: 3px 0 0; }
+    .period-save-state {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 5px 10px;
+      border: 1px solid #cfe9e2;
+      border-radius: 999px;
+      background: #eefaf7;
+      color: #0f766e;
+      font-size: 0.76rem;
+      font-weight: 850;
+    }
+    .period-save-state.is-dirty {
+      border-color: #f2d39a;
+      background: #fff7e8;
+      color: #a16207;
+    }
     .period-controls {
       display: grid;
       grid-template-columns: minmax(170px, 1fr) 130px auto;
@@ -245,6 +269,22 @@
       line-height: 1.45;
     }
     .savings-explainer strong { color: var(--text); }
+    .monthly-investment-summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 9px;
+      margin-top: 12px;
+    }
+    .monthly-investment-summary > div {
+      display: grid;
+      gap: 4px;
+      padding: 10px 12px;
+      border: 1px solid #dce7f2;
+      border-radius: 13px;
+      background: #fbfdff;
+    }
+    .monthly-investment-summary span { color: var(--muted); font-size: 0.76rem; }
+    .monthly-investment-summary strong { font-size: 0.95rem; }
     .personal-savings-total {
       display: flex;
       justify-content: space-between;
@@ -691,6 +731,7 @@
       .personal-savings-total { align-items: flex-start; flex-direction: column; }
       .personal-savings-grid,
       .savings-account-projection { grid-template-columns: 1fr; }
+      .monthly-investment-summary { grid-template-columns: 1fr; }
       .account-interest-fields,
       .deposit-summary-grid { grid-template-columns: 1fr 1fr !important; }
       .account-interest-fields > .btn { grid-column: 1 / -1; width: 100%; }
@@ -1126,6 +1167,20 @@
       background: linear-gradient(135deg, #103326 0%, #143156 100%);
       border-color: #335d71;
       color: #9db0c9;
+    }
+    body.dark .period-save-state {
+      border-color: #2c765e;
+      background: #103326;
+      color: #58e0bb;
+    }
+    body.dark .period-save-state.is-dirty {
+      border-color: #8a5b16;
+      background: #4a3111;
+      color: #ffd27a;
+    }
+    body.dark .monthly-investment-summary > div {
+      background: rgba(7, 17, 31, 0.45);
+      border-color: #2a3b58;
     }
     body.dark .personal-savings-total {
       background: linear-gradient(135deg, #103326 0%, #143156 100%);

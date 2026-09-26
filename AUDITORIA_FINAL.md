@@ -1,70 +1,55 @@
-# Auditoría final · 1 de agosto de 2026
+# Auditoría integral · 26 de septiembre de 2026
 
-## Revisión de depósitos, cuentas e ingresos
+## Alcance
 
-- Copia remota previa: `backup/pre-deposit-sync-altan-2026-08-01`.
-- Clonación de trabajo aislada: `/private/tmp/homeflow-audit-20260801.znhwkj/repo`.
-- Se encontró la causa de la desincronización: los depósitos se guardaban en `profile.deposits` y `bundle.deposits` mediante dos escrituras distintas.
-- El guardado del perfil actualiza ambas ubicaciones en una sola operación y el método duplicado `saveDeposits` se ha retirado.
-- La conciliación nunca permite que una copia activa vuelva a abrir un depósito que ya figura como cerrado en la otra copia.
-- El resumen de depósitos se calcula únicamente con posiciones activas y muestra capital, interés pendiente y total al vencimiento.
-- Los intereses reales de cuentas remuneradas se guardan por fecha, aumentan el saldo y aparecen en el acumulado anual junto a los depósitos cerrados.
-- Altan se añade como ingreso recurrente específico de Diego sin sustituir Hospital, Universidad ni otros pagadores existentes.
-- Los archivos JavaScript y CSS usan una versión de caché común para que GitHub Pages cargue la publicación nueva.
+Revisión de la estructura HTML, estilos responsive, cálculos financieros, persistencia en Firebase, histórico, inversiones, depósitos, cuentas remuneradas y exportaciones. La comprobación visual se realizó con datos de demostración aislados, sin leer ni modificar los datos reales del usuario.
 
-## Validación de esta revisión
+## Correcciones aplicadas
 
-- Prueba automática de dos copias contradictorias del mismo depósito: el resultado conserva `closed` y capital activo cero.
-- Prueba de cartera con dos depósitos activos y uno cerrado: solo se suman los dos activos.
-- Prueba combinada de intereses de depósito y Trade Republic separada por años y por origen.
-- Cierre visual de un depósito: el contador pasó de 2 a 1 y el capital activo de 8.000 € a 5.000 €.
-- Abono visual de 24,66 € en Trade Republic: saldo de 10.000 € a 10.024,66 € e histórico anual de 32,40 € a 57,06 €.
-- El bloque de cuentas y el año de intereses permanecieron abiertos después de guardar el abono.
-- Altan apareció en el bloque mensual de Diego junto a Hospital y Universidad.
-- Interfaz revisada en 1365 × 900 y 390 × 844, sin desbordamiento horizontal en móvil.
-- `npm test`, comprobación de sintaxis, contratos HTML, IDs duplicados y `git diff --check` correctos.
+- Las aportaciones mensuales a renta variable y renta fija se consideran inversión a largo plazo. Ambas reducen el ahorro disponible y permanecen dentro del ahorro total.
+- El histórico calcula ahora una tasa global ponderada (`ahorro total / ingresos totales`) en vez de promediar porcentajes mensuales.
+- El bloque mensual muestra por separado renta variable, renta fija y total aportado.
+- Los meses modificados muestran `Cambios sin guardar`; cargar otro período, cerrar sesión o salir de la página ya no puede descartarlos silenciosamente.
+- Guardar un mes existente continúa sustituyendo su clave `AAAA-MM`, sin crear otra fila ni volver a sumar el mes.
+- Los guardados de perfil y períodos se ejecutan en cola para impedir que dos escrituras simultáneas de la misma pestaña se sobrescriban.
+- Varias operaciones de patrimonio restauran el estado anterior si Firebase rechaza el guardado.
+- Los depósitos muestran interés bruto, retención estimada configurable e interés neto. Al cobrar se solicita el interés neto real, que es el importe archivado por año.
+- Los informes Excel y PDF incluyen el histórico de intereses cobrados de depósitos y cuentas remuneradas.
+- Se rechazan importes negativos o nulos en altas de gastos, ingresos, inversiones, depósitos, vivienda y traspasos.
+- Las dependencias principales del CDN quedan fijadas a versiones concretas y los gráficos o la exportación muestran un aviso si una librería externa no carga.
+- Se retiró el modo local antiguo que podía guardar contraseñas en `localStorage`. Se conserva únicamente la lectura de copias locales antiguas necesaria para migrarlas a Firebase.
+- Al cambiar de pestaña se vuelve al inicio de la nueva sección.
 
-## Seguridad de datos
+## Compatibilidad y seguridad de datos
 
-- Copia remota previa: `backup/pre-redesign-2026-06-29`.
-- Copia local previa a esta revisión: `/private/tmp/homeflow-backup-2026-06-30-before-compact-ui`.
-- Copia local previa a la aclaración del ahorro: `/private/tmp/homeflow-backup-2026-06-30-savings-scroll`.
-- Copia local previa a desplegables, ahorro personal y cuentas remuneradas: `/private/tmp/homeflow-backup-2026-07-01-accordions-annual-savings`.
-- No se cambian las claves existentes de Firebase.
-- Guardar un período usa su clave `AAAA-MM`: una corrección reemplaza el mes, no lo duplica.
-- Se conservan los campos antiguos necesarios para leer datos previos.
+- Copia remota previa: `backup/pre-full-audit-2026-09-26`.
+- Punto de partida auditado: `97ef65f60f40bb9dca44d275f838240c070f822c`.
+- No se cambian las colecciones, claves ni documentos existentes de Firebase.
+- Se mantienen los campos heredados de depósitos, renta fija y copias locales que todavía sirven para compatibilidad o migración.
+- Un depósito cerrado nunca vuelve a activo al conciliar copias históricas.
+- No se ha añadido lectura de nóminas o recibos, tal como se decidió.
 
-## Comprobaciones realizadas
+## Validación realizada
 
-- Sintaxis de `app.js` y `homeflow-core.js`.
-- Pruebas de renta fija, renta variable, depósitos cerrados e intereses anuales.
-- Prueba de actualización idempotente de un mes.
-- IDs HTML sin duplicados.
-- Referencias de controles estáticos revisadas.
-- Interfaz probada en 390 × 844 y 1280 × 900.
-- Resumen financiero probado con ingresos de 5.500 €, gastos de vida de 3.000 € y fondos de 1.000 €: 1.500 € disponibles y 2.500 € de ahorro total.
-- Sin desbordamiento horizontal en móvil ni escritorio.
-- Navegación inferior anclada al borde del viewport durante el scroll, con el área segura dentro de la barra.
-- El último botón de «Herramientas y seguridad» queda 52 px por encima de la navegación inferior en 390 × 844.
-- En móvil, añadir un gasto dentro del bloque de Diego conserva el desplegable abierto.
-- El ahorro anual por persona se comprobó con dos meses y reconcilia con el total familiar.
-- Una cuenta de 10.000 € al 3 % TAE muestra 24,66 € mensuales y 300 € anuales estimados; el saldo entra en el total y en el rosco.
-- Sin errores ni avisos en la consola del navegador.
-- Cero desplegables abiertos al iniciar, cero IDs duplicados y cero funciones sin uso.
-- El despliegue de 14 depósitos se probó sin una nueva consulta remota.
+- Sintaxis completa de `app.js` y `homeflow-core.js`.
+- Pruebas de clasificación de renta fija y variable, ahorro disponible, ahorro total y reparto anual por adulto.
+- Prueba de tasa histórica ponderada con meses de ingresos distintos.
+- Pruebas de cálculo de depósitos, cierre, conciliación, vencimiento a final de mes, retención configurable e intereses por año.
+- Pruebas de cuentas remuneradas y proyección TAE.
+- Contratos HTML, IDs únicos, controles críticos, caché de publicación y actualización idempotente de meses.
+- Prueba funcional de edición: el desplegable permanece abierto al escribir y aparece el aviso de cambios pendientes.
+- Prueba funcional de actualización del mismo mes: nueve meses antes y nueve después, con mensaje de período actualizado.
+- Prueba de seis depósitos: tres visibles inicialmente; `Ver 3 más` muestra los seis y cambia a `Mostrar menos`.
+- Revisión visual real en 390 × 844 y 1440 × 900, modo oscuro, sin desbordamiento horizontal y con la navegación móvil fija sin tapar el botón de guardado.
+- Consola sin errores propios de HomeFlow durante la prueba visual.
+
+## Hallazgos que no conviene cambiar sin una decisión funcional
+
+1. **Vivienda no equivale necesariamente a patrimonio neto.** Ahora se suman entrada, pagos extraordinarios y cuotas hipotecarias registradas. Si las cuotas incluyen intereses, el rosco refleja desembolso, no capital amortizado. Para calcular patrimonio real harían falta saldo pendiente de hipoteca y valor actual de la vivienda.
+2. **Reglas de Firestore fuera del repositorio.** El cliente está revisado, pero las reglas de seguridad del servidor no pueden auditarse porque no están versionadas aquí. Conviene añadir `firestore.rules` y una prueba de acceso por usuario cuando se disponga del proyecto Firebase.
+3. **`app.js` sigue siendo grande.** La lógica financiera crítica ya está en `homeflow-core.js` y cubierta por pruebas. Dividir el resto por dominios mejoraría mantenimiento, pero hacerlo sin empaquetador tendría más riesgo que beneficio en esta entrega.
+4. **Dependencia de CDN.** Hay degradación controlada para gráficos y exportaciones, pero la aplicación sigue necesitando internet para Firebase y las librerías externas.
 
 ## Resultado
 
-- Los botones «Ver más / Mostrar menos» conservan correctamente su estado.
-- «Ver más» en depósitos actualiza únicamente la lista visible y responde de forma inmediata.
-- El histórico móvil usa tarjetas y el escritorio mantiene sus tablas.
-- Mes, inversiones y ajustes están organizados en desplegables cerrados por defecto.
-- Acceso y tema forman parte de la cabecera compacta.
-- El patrimonio inicial se administra desde Ajustes.
-- La lista de depósitos muestra capital, interés y total en campos separados.
-- La calculadora añade escenarios rápidos, inflación, valor real y objetivo.
-- El resumen, el histórico, los gráficos y las exportaciones distinguen entre ahorro disponible, inversión a largo plazo y ahorro total.
-- Las aportaciones a fondos conservan su comportamiento anterior: se restan del disponible, pero ahora también cuentan en el ahorro total.
-- Las cuentas remuneradas son compatibles con perfiles antiguos mediante el nuevo campo opcional `savingsAccounts`.
-- Excel y PDF incluyen las cuentas remuneradas y sus estimaciones.
-- Se retiraron funciones sin ninguna llamada, sin eliminar estructuras de datos compatibles.
+La versión auditada conserva los datos existentes, corrige las inconsistencias financieras detectadas, protege mejor los cambios no guardados y hace que depósitos e informes usen importes reales cuando están disponibles. La interfaz mantiene todos los desplegables cerrados al entrar y se ha comprobado tanto en móvil como en escritorio.

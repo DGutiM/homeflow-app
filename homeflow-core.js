@@ -175,11 +175,100 @@
     }, { count: 0, capital: 0, pendingInterest: 0, maturityTotal: 0 });
   }
 
+  function parseLocalDate(dateStr) {
+    const [year, month, day] = String(dateStr || '').split('-').map(Number);
+    if (!year || !month || !day) return null;
+    return new Date(year, month - 1, day, 12, 0, 0, 0);
+  }
+
+  function formatDateInput(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  function addMonthsToDate(dateStr, months) {
+    const base = parseLocalDate(dateStr);
+    if (!base) return null;
+    const safeMonths = Math.max(1, Number.parseInt(months || 0, 10) || 0);
+    const targetMonthIndex = base.getMonth() + safeMonths;
+    const targetYear = base.getFullYear() + Math.floor(targetMonthIndex / 12);
+    const normalizedMonth = ((targetMonthIndex % 12) + 12) % 12;
+    const lastDayOfTargetMonth = new Date(targetYear, normalizedMonth + 1, 0).getDate();
+    const clampedDay = Math.min(base.getDate(), lastDayOfTargetMonth);
+    return new Date(targetYear, normalizedMonth, clampedDay, 12, 0, 0, 0);
+  }
+
+  function calculateDepositEstimate(amount, rate, start, durationMonths, nowDate = null, withholdingRate = 19) {
+    const principal = Math.max(0, numberValue(amount));
+    const annualRate = Math.max(0, numberValue(rate));
+    const safeWithholdingRate = Math.max(0, Math.min(100, numberValue(withholdingRate)));
+    const startDate = parseLocalDate(start);
+    const endDate = addMonthsToDate(start, durationMonths);
+    if (!startDate || !endDate) {
+      return {
+        end: '',
+        totalDays: 0,
+        daysRemaining: 0,
+        overdueDays: 0,
+        grossInterest: 0,
+        withholdingRate: roundMoney(safeWithholdingRate),
+        interest: 0,
+        finalAmount: roundMoney(principal),
+        matured: false,
+        endingSoon: false,
+        dueToday: false
+      };
+    }
+
+    const totalDays = Math.max(0, Math.round((endDate - startDate) / 86400000));
+    const today = nowDate ? new Date(nowDate) : new Date();
+    today.setHours(12, 0, 0, 0);
+    const rawDaysRemaining = Math.round((endDate - today) / 86400000);
+    const matured = rawDaysRemaining < 0;
+    const dueToday = rawDaysRemaining === 0;
+    const daysRemaining = Math.max(0, rawDaysRemaining);
+    const overdueDays = matured ? Math.abs(rawDaysRemaining) : 0;
+    const endingSoon = !matured && !dueToday && daysRemaining < 10;
+    const grossInterest = principal * (annualRate / 100) * (totalDays / 365);
+    const netInterest = grossInterest * (1 - (safeWithholdingRate / 100));
+    return {
+      end: formatDateInput(endDate),
+      totalDays,
+      daysRemaining,
+      overdueDays,
+      grossInterest: roundMoney(grossInterest),
+      withholdingRate: roundMoney(safeWithholdingRate),
+      interest: roundMoney(netInterest),
+      finalAmount: roundMoney(principal + netInterest),
+      matured,
+      endingSoon,
+      dueToday
+    };
+  }
+
   function sumInvestmentsByCategory(items, category) {
     return roundMoney(
       (items || [])
         .filter((item) => getInvestmentCategory(item?.type) === category)
         .reduce((total, item) => total + numberValue(item?.amount), 0)
+    );
+  }
+
+  function summarizeMonthlyInvestments(items) {
+    const summary = (items || []).reduce((totals, item) => {
+      const amount = numberValue(item?.amount);
+      const category = getInvestmentCategory(item?.type);
+      if (category === 'variable') totals.variable += amount;
+      else if (category === 'fixed') totals.fixed += amount;
+      else totals.other += amount;
+      totals.total += amount;
+      return totals;
+    }, { variable: 0, fixed: 0, other: 0, total: 0 });
+
+    return Object.fromEntries(
+      Object.entries(summary).map(([key, value]) => [key, roundMoney(value)])
     );
   }
 
@@ -197,6 +286,26 @@
       totalSavings,
       totalSavingsRate: income > 0 ? roundMoney((totalSavings / income) * 100) : 0,
       totalOutflows: roundMoney(living + invested)
+    };
+  }
+
+  function summarizeSavingsPeriods(periods) {
+    const totals = (periods || []).reduce((summary, period) => {
+      summary.income += numberValue(period?.income);
+      summary.totalOutflows += numberValue(period?.totalOutflows);
+      summary.availableSavings += numberValue(period?.availableSavings);
+      summary.totalSavings += numberValue(period?.totalSavings);
+      return summary;
+    }, { income: 0, totalOutflows: 0, availableSavings: 0, totalSavings: 0 });
+
+    const income = roundMoney(totals.income);
+    return {
+      income,
+      totalOutflows: roundMoney(totals.totalOutflows),
+      availableSavings: roundMoney(totals.availableSavings),
+      totalSavings: roundMoney(totals.totalSavings),
+      totalSavingsRate: income > 0 ? roundMoney((totals.totalSavings / income) * 100) : 0,
+      count: Array.isArray(periods) ? periods.length : 0
     };
   }
 
@@ -248,6 +357,7 @@
 
   root.HomeFlowCore = Object.freeze({
     allocateSavingsByAdult,
+    calculateDepositEstimate,
     calculateDepositPortfolio,
     calculateSavingsAccountProjection,
     calculateSavingsBreakdown,
@@ -261,6 +371,8 @@
     numberValue,
     parseMoneyInput,
     roundMoney,
+    summarizeMonthlyInvestments,
+    summarizeSavingsPeriods,
     sumInvestmentsByCategory,
     upsertPeriodMap
   });
