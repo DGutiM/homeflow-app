@@ -587,6 +587,7 @@
       document.getElementById('calculate-compound').addEventListener('click', calculateCompound);
       document.getElementById('export-history').addEventListener('click', exportHistoryExcel);
       document.getElementById('export-pdf').addEventListener('click', exportHistoryPDF);
+      document.getElementById('export-backup').addEventListener('click', exportFullBackup);
       document.getElementById('add-deposit').addEventListener('click', addDeposit);
       document.getElementById('add-savings-account')?.addEventListener('click', addSavingsAccount);
       document.getElementById('add-historical-investment')?.addEventListener('click', addHistoricalInvestment);
@@ -3434,6 +3435,28 @@ async function addHistoricalInvestment() {
         console.error(error);
         const msg = error?.message ? `No se pudo guardar la familia: ${error.message}` : 'No se pudo guardar la familia.';
         document.getElementById('setup-status').textContent = msg;
+      }
+    }
+
+    function downloadJsonFile(data, filename) {
+      const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    async function exportFullBackup() {
+      const status = document.getElementById('backup-status');
+      try {
+        if (!state.currentUser) throw new Error('Inicia sesión para descargar tus datos.');
+        const bundle = await storageAdapter.getSafeBundle();
+        const exportedAt = new Date().toISOString();
+        downloadJsonFile({ format: 'homeflow-backup', version: 1, exportedAt, bundle }, `HomeFlow_copia_${exportedAt.slice(0, 10)}.json`);
+        status.textContent = `Copia descargada: ${Object.keys(bundle.periods || {}).length} meses y el perfil completo. Incluye los datos guardados.`;
+      } catch (error) {
+        status.textContent = error.message || 'No se pudo descargar la copia.';
       }
     }
 

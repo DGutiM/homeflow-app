@@ -16,8 +16,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="homeflow-core.js?v=20260926-1"></script>
-  <link rel="stylesheet" href="styles.css?v=20260926-1" />
+  <script src="homeflow-core.js?v=20261012-1"></script>
+  <link rel="stylesheet" href="styles.css?v=20261012-1" />
 </head>
 <body>
   <div class="app-shell">
@@ -787,10 +787,18 @@
 
         <details class="workspace-accordion danger-accordion" data-mobile-collapsed data-scroll-on-open>
           <summary>
-            <span><strong>Herramientas y seguridad</strong><small>Asistente familiar y borrado de datos</small></span>
+            <span><strong>Herramientas y seguridad</strong><small>Copia completa y configuración familiar</small></span>
           </summary>
           <div class="accordion-body">
             <div class="simple-list">
+              <div class="alert-row">
+                <div>
+                  <strong>Copia de seguridad completa</strong>
+                  <div class="muted">Descarga todos los meses, posiciones, depósitos y ajustes en un archivo privado. Conserva esta copia fuera del repositorio público.</div>
+                </div>
+                <button class="btn btn-soft btn-inline" id="export-backup">Descargar copia completa</button>
+              </div>
+              <div class="status" id="backup-status" role="status"></div>
               <div class="alert-row">
                 <div>
                   <strong>Editar con el asistente familiar</strong>
@@ -875,6 +883,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=20260926-1"></script>
+  <script src="app.js?v=20261012-1"></script>
 </body>
 </html>
