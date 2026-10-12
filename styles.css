@@ -1,3 +1,30 @@
+    .reconciliation-list { display: grid; gap: 12px; margin: 18px 0; }
+    .reconciliation-month { border: 1px solid var(--line); border-radius: 16px; padding: 16px; min-width: 0; }
+    .reconciliation-month > summary { display: flex; justify-content: space-between; align-items: center; gap: 12px; cursor: pointer; }
+    .reconciliation-month > summary > span { margin-left: auto; white-space: nowrap; }
+    .reconciliation-month > summary::after { content: '+'; color: var(--brand); font-weight: 800; }
+    .reconciliation-month[open] > summary::after { content: '−'; }
+    .reconciliation-month[open] > summary { margin-bottom: 16px; }
+    .reconciliation-owners { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px; }
+    .reconciliation-owners > div { display: grid; gap: 6px; font-variant-numeric: tabular-nums; }
+    .reconciliation-owners span, .reconciliation-owners small { color: var(--muted); }
+    .context-note { color: var(--muted); font-size: .88rem; line-height: 1.5; }
+    .period-context { display: block; color: var(--brand); margin-top: 6px; }
+    .inline-check { display: flex; align-items: center; gap: 8px; }
+    .inline-check input { width: auto; }
+    .settlement-dialog { color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 24px; width: min(700px, calc(100vw - 24px)); max-height: calc(100dvh - 32px); overflow-y: auto; box-shadow: var(--shadow); }
+    .settlement-dialog::backdrop { background: rgba(0, 0, 0, .55); }
+    .settlement-dialog h2 { overflow-wrap: anywhere; }
+    .settlement-dialog .field-row { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+    @media (max-width: 720px) {
+      .reconciliation-owners { grid-template-columns: 1fr; }
+      .transfer-review-row .field-row { grid-template-columns: 1fr; }
+      .settlement-dialog { padding: 18px; }
+      .settlement-dialog .field-row { grid-template-columns: 1fr; }
+      .list-row > div { min-width: 0; flex-wrap: wrap; }
+      .section-title > div { min-width: 0; max-width: 100%; }
+    }
+
     :root {
       --bg: #f3f7fb;
       --card: #ffffff;

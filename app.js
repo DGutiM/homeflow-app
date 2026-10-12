@@ -72,6 +72,7 @@
       merged.housing = { ...base.housing, ...(merged.housing || {}) };
       merged.housing.extraPayments = Array.isArray(merged.housing.extraPayments) ? merged.housing.extraPayments : [];
       merged.investmentTransfers = Array.isArray(merged.investmentTransfers) ? merged.investmentTransfers : [];
+      merged.workSchedules = Array.isArray(merged.workSchedules) ? merged.workSchedules : [];
       merged.cashManualEntries = Array.isArray(merged.cashManualEntries) ? merged.cashManualEntries : [];
       merged.cashTrackingStartAt = merged.cashTrackingStartAt || null;
       merged.cashTrackingResetAt = merged.cashTrackingResetAt || null;
@@ -98,6 +99,7 @@
         investmentPositions: [],
         savingsAccounts: [],
         investmentTransfers: [],
+        workSchedules: [],
         deposits: [],
         cashManualEntries: [],
         cashTrackingStartAt: null,
@@ -336,19 +338,6 @@
           throw new Error('No se pudieron cargar tus datos.');
         }
       },
-      async saveUserBundle(userId, bundle) {
-        if (!userId) return;
-        if (!authAdapter.firebaseReady) {
-          throw new Error('Esta versión requiere Firebase para guardar los datos.');
-        }
-        try {
-          const ref = await this.getRemoteDocRef(userId);
-          await ref.set(structuredClone(bundle), { merge: true });
-        } catch (error) {
-          console.error('Fallo guardando en Firebase.', error);
-          throw new Error('No se pudo guardar. Inténtalo otra vez.');
-        }
-      },
       async wipeUserBundle(userId) {
         if (!userId) return;
         try {
@@ -371,10 +360,10 @@
         const userId = state.currentUser?.uid;
         const profileSnapshot = structuredClone(profile);
         return this.enqueueWrite(async () => {
-          const bundle = await this.getSafeBundle(userId);
-          bundle.profile = profileSnapshot;
+          const ref = await this.getRemoteDocRef(userId);
+          const bundle = { profile: profileSnapshot };
           bundle.deposits = structuredClone(profileSnapshot?.deposits || []);
-          await this.saveUserBundle(userId, bundle);
+          await ref.set(bundle, { mergeFields: ['profile', 'deposits'] });
         });
       },
       async getProfile() {
@@ -389,13 +378,22 @@
         const userId = state.currentUser?.uid;
         const periodSnapshot = structuredClone(data);
         return this.enqueueWrite(async () => {
-          const bundle = await this.getSafeBundle(userId);
-          bundle.periods = HomeFlowCore.upsertPeriodMap(
-            bundle.periods,
-            periodId,
-            periodSnapshot
-          );
-          await this.saveUserBundle(userId, bundle);
+          const ref = await this.getRemoteDocRef(userId);
+          const periods = HomeFlowCore.upsertPeriodMap({}, periodId, periodSnapshot);
+          await ref.set({ periods }, { mergeFields: [new firebase.firestore.FieldPath('periods', periodId)] });
+        });
+      },
+      async linkHousingPayment(paymentId, period) {
+        const userId = state.currentUser?.uid;
+        return this.enqueueWrite(async () => {
+          const ref = await this.getRemoteDocRef(userId);
+          return firebase.firestore().runTransaction(async transaction => {
+            const snapshot = await transaction.get(ref);
+            const next = HomeFlowCore.linkHousingPaymentToPeriod(snapshot.data(), paymentId, period);
+            transaction.update(ref, new firebase.firestore.FieldPath('profile', 'housing'), next.profile.housing,
+              new firebase.firestore.FieldPath('periods', period), next.periods[period]);
+            return next;
+          });
         });
       },
       async getPeriod(periodId) {
@@ -589,10 +587,23 @@
       document.getElementById('export-pdf').addEventListener('click', exportHistoryPDF);
       document.getElementById('export-backup').addEventListener('click', exportFullBackup);
       document.getElementById('add-deposit').addEventListener('click', addDeposit);
+      document.getElementById('deposit-settlement-form').addEventListener('submit', saveDepositSettlement);
+      document.getElementById('cancel-deposit-settlement').addEventListener('click', () => document.getElementById('deposit-settlement-dialog').close());
       document.getElementById('add-savings-account')?.addEventListener('click', addSavingsAccount);
       document.getElementById('add-historical-investment')?.addEventListener('click', addHistoricalInvestment);
       document.getElementById('save-housing-settings')?.addEventListener('click', saveHousingSettings);
       document.getElementById('add-housing-extra')?.addEventListener('click', addHousingExtraPayment);
+      document.getElementById('save-work-schedule')?.addEventListener('click', saveWorkSchedule);
+      document.addEventListener('focusin', event => {
+        const input = event.target;
+        if (input.matches('input[type="number"][step="0.01"]')) {
+          input.inputMode = 'decimal';
+          if (input.value !== '' && Number(input.value) === 0) {
+            input.value = '';
+            input.placeholder ||= '0';
+          }
+        }
+      });
       document.getElementById('add-extra-fixed-expense').addEventListener('click', addExtraFixedExpenseFromConfig);
       document.getElementById('add-adult').addEventListener('click', addAdultFromConfig);
       document.getElementById('add-adult-extra-income').addEventListener('click', addAdultExtraIncomeFromConfig);
@@ -772,7 +783,7 @@
       state.periodDirty = !!dirty;
       const indicator = document.getElementById('period-save-state');
       if (!indicator) return;
-      indicator.textContent = state.periodDirty ? 'Cambios sin guardar' : 'Período al día';
+      indicator.textContent = state.periodDirty ? 'Cambios sin guardar' : (state.currentUser && !state.form?.meta?.updatedAt ? 'Mes nuevo · sin guardar' : 'Período al día');
       indicator.classList.toggle('is-dirty', state.periodDirty);
     }
 
@@ -824,7 +835,9 @@
       if (!force && !confirmDiscardPeriodChanges()) return false;
       state.currentPeriod = getSelectedPeriodId();
       const data = await storageAdapter.getPeriod(state.currentPeriod);
-      state.form = ensurePeriodStructure(data || createEmptyPeriodData(), state.profile);
+      state.form = ensurePeriodStructure(HomeFlowCore.applyHousingInstallmentDefault(
+        data || createEmptyPeriodData(), state.profile.housing, state.currentPeriod, { isNew: !data }
+      ), state.profile);
       state.form.meta ||= {};
       state.form.meta.profileSnapshot ||= buildProfileSnapshot(state.profile);
       renderMonthlyArea();
@@ -849,13 +862,15 @@
         if (saveButton) saveButton.disabled = true;
         const periodAlreadyExists = !!(await storageAdapter.getPeriod(state.currentPeriod));
         state.form.meta.updatedAt = new Date().toISOString();
-        state.form.meta.profileSnapshot = buildProfileSnapshot(state.profile);
-        await storageAdapter.savePeriod(state.currentPeriod, structuredClone(state.form));
-        setPeriodDirty(false);
+        state.form.meta.profileSnapshot ||= buildProfileSnapshot(state.profile);
+        const savedSnapshot = structuredClone(state.form);
+        await storageAdapter.savePeriod(state.currentPeriod, savedSnapshot);
+        setPeriodDirty(JSON.stringify(state.form) !== JSON.stringify(savedSnapshot));
         renderPeriodContextNote();
         setStatus(periodAlreadyExists
           ? `✅ ${formatPeriod(state.currentPeriod)} actualizado. El mes anterior se ha reemplazado, no se ha duplicado.`
           : `✅ ${formatPeriod(state.currentPeriod)} guardado correctamente.`);
+        if (state.periodDirty) setStatus('El mes se ha guardado. Hay cambios posteriores pendientes de guardar.', false, true);
         flashSaveButtonSuccess();
         await refreshHistoricalView();
       } catch (error) {
@@ -887,6 +902,7 @@
               <div><label>${escapeHtml(fixedLabels.agua)}</label><input type="number" min="0" step="0.01" data-path="expenses.commonFixed.agua" value="${num(state.form.expenses.commonFixed.agua)}" /></div>
               <div><label>${escapeHtml(fixedLabels.viviendaAlquiler || 'Alquiler')}</label><input type="number" min="0" step="0.01" data-path="expenses.commonFixed.viviendaAlquiler" value="${num(state.form.expenses.commonFixed.viviendaAlquiler)}" /></div>
               <div><label>${escapeHtml(fixedLabels.viviendaHipoteca || 'Hipoteca')}</label><input type="number" min="0" step="0.01" data-path="expenses.commonFixed.viviendaHipoteca" value="${num(state.form.expenses.commonFixed.viviendaHipoteca)}" /></div>
+              <div><label for="monthly-housing-installment">Cuota 5% RetiroAura</label><input id="monthly-housing-installment" type="number" min="0" step="0.01" data-path="expenses.commonFixed.viviendaCuota5" value="${num(state.form.expenses.commonFixed.viviendaCuota5) || ''}" placeholder="0" /><small class="muted">Gasto del mes y pago de vivienda. Se reparte entre los dos.</small></div>
               <div><label>${escapeHtml(fixedLabels.garaje)}</label><input type="number" min="0" step="0.01" data-path="expenses.commonFixed.garaje" value="${num(state.form.expenses.commonFixed.garaje)}" /></div>
             </div>
             ${(loadedContext.extraFixedExpenseLabels || []).length ? `
@@ -924,27 +940,29 @@
           </details>
 
           <details class="workspace-accordion monthly-invest-card" data-mobile-collapsed>
-            <summary><span><strong>Inversiones comunes</strong><small>Aportaciones del hogar por tipo y titular</small></span></summary>
+            <summary><span><strong>Inversión del mes</strong><small>Aportaciones nuevas y traspasos por titular</small></span></summary>
             <div class="accordion-body">
             <div class="category-card">
-              <div class="section-title"><h3>Aportaciones mensuales</h3><span class="muted">La renta variable y la renta fija alimentan su categoría correspondiente</span></div>
+              <div class="section-title"><h3>Destino del dinero</h3><span class="muted">Indica si sale de los ingresos del mes o de renta fija ya acumulada.</span></div>
               <div class="field-row-4">
                 <div><label>Concepto</label><input id="invest-name" type="text" placeholder="Ej. Fondo índice / ETF" /></div>
                 <div><label>Tipo</label><select id="invest-type"><option value="Renta variable">Renta variable</option><option value="Renta fija">Renta fija</option></select></div>
                 <div><label>Titular</label><select id="invest-owner"><option value="Hogar">Hogar</option>${getLoadedAdults().map(a => `<option value="${escapeHtml(a.name)}">${escapeHtml(a.name)}${isArchivedMember(a.id, 'adult') ? ' (histórico)' : ''}</option>`).join('')}</select></div>
                 <div><label>Importe</label><input id="invest-amount" type="number" min="0" step="0.01" /></div>
+                <div><label for="invest-source">Origen</label><select id="invest-source"><option value="income">Ingresos del mes</option><option value="fixed">Traspaso desde renta fija</option></select></div>
                 <button class="btn btn-soft" data-add-dynamic="expenses.monthlyInvestments">Añadir</button>
               </div>
+              <div id="monthly-investment-status" class="status" role="status"></div>
               <div id="list-monthlyInvestments" class="dynamic-list"></div>
               <div class="monthly-investment-summary" aria-label="Resumen de aportaciones mensuales">
                 <div><span>Renta variable</span><strong id="monthly-investment-variable">0 €</strong></div>
                 <div><span>Renta fija</span><strong id="monthly-investment-fixed">0 €</strong></div>
-                <div><span>Total del mes</span><strong id="monthly-investment-total">0 €</strong></div>
+                <div><span>Aportación nueva</span><strong id="monthly-investment-total">0 €</strong></div>
+                <div><span>Traspasos a variable</span><strong id="monthly-investment-transfers">0 €</strong></div>
               </div>
             </div>
             <div class="category-card" style="margin-top:16px;">
-              <div class="section-title"><h3>Inversiones acumuladas del hogar</h3><span class="muted">Se calculan automáticamente con lo ya guardado</span></div>
-              <div class="empty-box">Aquí ya no tienes que añadir posiciones acumuladas. HomeFlow suma automáticamente las aportaciones mensuales guardadas en su categoría y los depósitos activos en la pestaña Inversiones.</div>
+              <p class="subtle">La aportación desde ingresos reduce el ahorro disponible. Un traspaso mueve patrimonio existente: aparece en el histórico de inversión, pero no resta otra vez de la nómina ni genera ahorro nuevo.</p>
             </div>
             </div>
           </details>
@@ -962,6 +980,10 @@
 
     function bindMonthlyFieldInputs() {
       document.querySelectorAll('[data-path]').forEach(input => {
+        if (Number(input.value) === 0) input.value = '';
+        input.placeholder ||= '0';
+        input.inputMode = 'decimal';
+        if (!input.getAttribute('aria-label') && !input.id) input.setAttribute('aria-label', input.previousElementSibling?.textContent || 'Importe');
         input.addEventListener('input', () => {
           setValueByStringPath(state.form, input.dataset.path, Math.max(0, parseFloat(input.value || 0) || 0));
           markPeriodDirty();
@@ -976,7 +998,7 @@
       });
     }
 
-    function addDynamicMonthlyItem(target) {
+    async function addDynamicMonthlyItem(target) {
       if (target === 'expenses.supermarket') {
         const name = document.getElementById('supermarket-name').value.trim();
         const amount = parseFloat(document.getElementById('supermarket-amount').value || 0);
@@ -1006,8 +1028,23 @@
         const type = document.getElementById('invest-type').value;
         const owner = document.getElementById('invest-owner').value;
         const amount = parseFloat(document.getElementById('invest-amount').value || 0);
+        const fundingSource = document.getElementById('invest-source').value;
         if (!name || amount <= 0) return;
-        state.form.expenses.monthlyInvestments.push({ name, type, owner, amount });
+        const status = document.getElementById('monthly-investment-status');
+        if (fundingSource === 'fixed') {
+          if (HomeFlowCore.getInvestmentCategory(type) !== 'variable') {
+            status.textContent = 'El traspaso desde renta fija debe tener como destino renta variable.';
+            return;
+          }
+          const breakdown = buildInvestmentOwnerBreakdown((await getAggregatedMonthlyInvestments()).rows, currentDeposits());
+          const available = breakdown.find(item => item.owner === owner)?.fixed || 0;
+          if (amount > available) {
+            status.textContent = `Renta fija disponible de ${owner}: ${formatCurrency(available)}.`;
+            return;
+          }
+        }
+        state.form.expenses.monthlyInvestments.push({ id: createId('monthly'), name, type, owner, amount, fundingSource });
+        status.textContent = '';
         markPeriodDirty();
         document.getElementById('invest-name').value = '';
         document.getElementById('invest-amount').value = '';
@@ -1030,7 +1067,7 @@
         renderCommonLists();
         renderMonthlySummary();
       });
-      renderSimpleDynamicList('list-monthlyInvestments', state.form.expenses.monthlyInvestments, item => `${item.type} · ${item.owner} · ${item.name}`, index => {
+      renderSimpleDynamicList('list-monthlyInvestments', state.form.expenses.monthlyInvestments, item => `${item.type} · ${item.owner} · ${item.name} · ${HomeFlowCore.isInternalInvestmentTransfer(item) ? 'Desde renta fija' : 'Desde ingresos'}`, index => {
         state.form.expenses.monthlyInvestments.splice(index, 1);
         markPeriodDirty();
         renderCommonLists();
@@ -1062,17 +1099,19 @@
         const totalAdultIncome = num(incomeBlock.mainFixed)
           + Object.values(incomeBlock.recurring || {}).reduce((acc, item) => acc + num(item.amount), 0)
           + sumList(incomeBlock.other || []);
+        const workSchedule = HomeFlowCore.getWorkSchedule(state.profile, adult.name, state.currentPeriod);
 
         card.innerHTML = `
           <summary>
             <span>
               <strong>${escapeHtml(adult.name)} · ingresos y gastos${archivedAdult ? ' · Histórico' : ''}</strong>
-              <small>Ingresos ${formatCurrency(totalAdultIncome)} · Gastos ${formatCurrency(personalExpenseTotal)}</small>
+              <small>Ingresos ${formatCurrency(totalAdultIncome)} · Gastos ${formatCurrency(personalExpenseTotal)}${workSchedule ? ` · Jornada ${num(workSchedule.percent)} %` : ''}</small>
             </span>
           </summary>
           <div class="accordion-body">
           <div class="person-sections">
             <section class="person-section income-section">
+              ${workSchedule ? `<p class="context-note">Jornada del ${num(workSchedule.percent)} % desde ${formatPeriod(workSchedule.startPeriod)} (${100 - num(workSchedule.percent)} % de reducción). Registra la nómina neta real.</p>` : ''}
               <div class="person-section-title">
                 <span>Ingresos</span>
                 <span class="chip-note">Entradas de dinero</span>
@@ -1080,7 +1119,7 @@
               <div class="field-row">
                 <div>
                   <label>${escapeHtml(incomeBlock.mainLabel || 'Ingreso principal')}</label>
-                  <input type="number" min="0" step="0.01" value="${num(incomeBlock.mainFixed)}" data-adult-income="${adult.id}" />
+                  <input type="number" min="0" step="0.01" inputmode="decimal" placeholder="0" aria-label="${escapeHtml(incomeBlock.mainLabel || 'Ingreso principal')}" value="${num(incomeBlock.mainFixed) || ''}" data-adult-income="${adult.id}" />
                 </div>
                 <div class="empty-box">
                   Aquí puedes registrar el ingreso estable de ${escapeHtml(adult.name)} y los ingresos que se repiten o solo ocurren este mes.
@@ -1094,7 +1133,7 @@
                     ${recurringToRender.map(item => `
                       <div>
                         <label>${escapeHtml(item.label)}${item.archived ? ' (histórico)' : ''}</label>
-                        <input type="number" min="0" step="0.01" value="${num((incomeBlock.recurring || {})[item.id]?.amount || 0)}" data-adult-recurring="${adult.id}" data-recurring-id="${item.id}" />
+                        <input type="number" min="0" step="0.01" inputmode="decimal" placeholder="0" aria-label="${escapeHtml(item.label)}" value="${num((incomeBlock.recurring || {})[item.id]?.amount || 0) || ''}" data-adult-recurring="${adult.id}" data-recurring-id="${item.id}" />
                       </div>
                     `).join('')}
                   </div>
@@ -1314,16 +1353,7 @@
     }
 
     function calculateHousingSummary(profile = state.profile, periodsMap = null) {
-      const housing = profile?.housing || createEmptyProfile().housing;
-      const totalPrice = num(housing.targetPrice);
-      const entryPaid = num(housing.entryPaid);
-      const extraPaymentsTotal = (housing.extraPayments || []).reduce((acc, item) => acc + num(item.amount), 0);
-      const periodSource = periodsMap || {};
-      const hipotecaPaid = Object.values(periodSource).reduce((acc, data) => acc + num(data?.expenses?.commonFixed?.viviendaHipoteca), 0);
-      const paid = entryPaid + extraPaymentsTotal + hipotecaPaid;
-      const pending = Math.max(0, totalPrice - paid);
-      const percent = totalPrice > 0 ? Math.min(100, (paid / totalPrice) * 100) : 0;
-      return { totalPrice, entryPaid, extraPaymentsTotal, hipotecaPaid, paid, pending, percent };
+      return HomeFlowCore.calculateHousingSummary(profile?.housing, periodsMap || {});
     }
 
     function renderHousingExtraPayments() {
@@ -1340,14 +1370,34 @@
         row.className = 'list-row';
         row.innerHTML = `
           <div>
-            <strong>${escapeHtml(item.name || 'Pago extraordinario')}</strong>
+            <strong>${escapeHtml(item.name || 'Adelanto')}</strong>
+            ${item.linkedInstallmentPeriod ? `<small class="muted">Incluido en ${formatPeriod(item.linkedInstallmentPeriod)}; no se vuelve a sumar aquí.</small>` : ''}
           </div>
           <div style="display:flex; gap:8px; align-items:center;">
             <span class="amount">${formatCurrency(item.amount)}</span>
-            <button class="btn btn-danger btn-inline">Eliminar</button>
+            ${!item.linkedInstallmentPeriod ? `<label>Mes de la cuota<input type="month" data-link-housing-period value="${state.currentPeriod || getSelectedPeriodId()}" /></label><button class="btn btn-soft btn-inline" data-link-housing>Vincular a mes</button><button class="btn btn-danger btn-inline" data-remove-housing>Eliminar</button>` : ''}
           </div>
         `;
-        row.querySelector('button').addEventListener('click', async () => {
+        row.querySelector('[data-link-housing]')?.addEventListener('click', async () => {
+          const period = row.querySelector('[data-link-housing-period]').value;
+          if (!period) return;
+          try {
+            if (state.periodDirty && state.currentPeriod === period) throw new Error('Guarda primero los cambios del mes abierto.');
+            const next = await storageAdapter.linkHousingPayment(item.id, period);
+            state.profile.housing = next.profile.housing;
+            if (state.currentPeriod === period) {
+              state.form = ensurePeriodStructure(next.periods[period], state.profile);
+              renderMonthlyArea();
+              renderMonthlySummary();
+            }
+            await renderInvestmentsTab();
+            await refreshHistoricalView();
+            document.getElementById('housing-status').textContent = `Cuota vinculada a ${formatPeriod(period)} sin duplicar el pago.`;
+          } catch (error) {
+            document.getElementById('housing-status').textContent = error.message;
+          }
+        });
+        row.querySelector('[data-remove-housing]')?.addEventListener('click', async () => {
           const [removed] = state.profile.housing.extraPayments.splice(index, 1);
           try {
             await storageAdapter.saveProfile(state.profile);
@@ -1370,10 +1420,20 @@
       const previous = {
         targetPrice: state.profile.housing.targetPrice,
         entryPaid: state.profile.housing.entryPaid,
+        installment5: structuredClone(state.profile.housing.installment5 || null),
         updatedAt: state.profile.updatedAt
       };
       state.profile.housing.targetPrice = num(document.getElementById('housing-target-price')?.value || 0);
       state.profile.housing.entryPaid = num(document.getElementById('housing-entry-paid')?.value || 0);
+      const amount = num(document.getElementById('housing-installment-amount').value);
+      const startPeriod = document.getElementById('housing-installment-start').value;
+      const endPeriod = document.getElementById('housing-installment-end').value;
+      if (amount < 0 || (amount > 0 && !startPeriod) || (endPeriod && endPeriod < startPeriod)) {
+        Object.assign(state.profile.housing, { targetPrice: previous.targetPrice, entryPaid: previous.entryPaid });
+        document.getElementById('housing-status').textContent = 'Revisa el importe y el intervalo de meses de la cuota.';
+        return;
+      }
+      state.profile.housing.installment5 = { amount: round2(amount), startPeriod, endPeriod };
       state.profile.updatedAt = new Date().toISOString();
       try {
         await storageAdapter.saveProfile(state.profile);
@@ -1386,6 +1446,7 @@
       } catch (error) {
         state.profile.housing.targetPrice = previous.targetPrice;
         state.profile.housing.entryPaid = previous.entryPaid;
+        state.profile.housing.installment5 = previous.installment5;
         state.profile.updatedAt = previous.updatedAt;
         const el = document.getElementById('housing-status');
         if (el) {
@@ -1494,6 +1555,9 @@
       setText('monthly-investment-variable', formatCurrency(totals.variableInvestments));
       setText('monthly-investment-fixed', formatCurrency(totals.fixedInvestments));
       setText('monthly-investment-total', formatCurrency(totals.investments));
+      const activity = HomeFlowCore.buildInvestmentActivity({ [state.currentPeriod]: state.form }, currentInvestmentTransfers()).find(row => row.period === state.currentPeriod);
+      setText('monthly-investment-transfers', formatCurrency(activity?.transfers || 0));
+      setText('kpi-investment-context', `Además, ${formatCurrency(activity?.transfers || 0)} traspasados desde renta fija.`);
 
       const savingsKpi = document.getElementById('kpi-savings').closest('.kpi');
       savingsKpi.classList.toggle('positive', totals.savings >= 0);
@@ -1513,7 +1577,8 @@
         <div class="total-item"><strong>Gastos de vida</strong><span class="amount">${formatCurrency(totals.livingExpenses)}</span></div>
         <div class="total-item"><strong>Aportado a renta variable</strong><span class="amount">${formatCurrency(totals.variableInvestments)}</span></div>
         <div class="total-item"><strong>Aportado a renta fija</strong><span class="amount">${formatCurrency(totals.fixedInvestments)}</span></div>
-        <div class="total-item"><strong>Inversión a largo plazo</strong><span class="amount">${formatCurrency(totals.investments)}</span></div>
+        <div class="total-item"><strong>Aportación nueva a inversión</strong><span class="amount">${formatCurrency(totals.investments)}</span></div>
+        <div class="total-item"><strong>Traspasos desde renta fija (no son gasto)</strong><span class="amount">${formatCurrency(activity?.transfers || 0)}</span></div>
       `;
 
       document.getElementById('totals-balance-box').innerHTML = `
@@ -1595,7 +1660,7 @@
         const adultByOwnerName = new Map(adults.map(adult => [String(adult.name || '').trim().toLocaleLowerCase('es'), adult]));
         const directInvestments = new Map(adults.map(adult => [adult.id, 0]));
         let householdInvestments = 0;
-        getMonthlyInvestments(row.data?.expenses?.monthlyInvestments).forEach(item => {
+        getMonthlyInvestments(row.data?.expenses?.monthlyInvestments).filter(item => !HomeFlowCore.isInternalInvestmentTransfer(item)).forEach(item => {
           const ownerKey = String(item.owner || 'Hogar').trim().toLocaleLowerCase('es');
           const adult = adultByOwnerName.get(ownerKey);
           if (adult) {
@@ -1675,22 +1740,25 @@
       const mobileList = document.getElementById('history-mobile-list');
       tbody.innerHTML = '';
       if (mobileList) mobileList.innerHTML = '';
+      const activity = HomeFlowCore.buildInvestmentActivity(Object.fromEntries(rows.map(row => [row.period, row.data])), currentInvestmentTransfers());
       if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="12" class="muted">No hay períodos guardados todavía.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="13" class="muted">No hay períodos guardados todavía.</td></tr>';
         if (mobileList) mobileList.innerHTML = '<div class="empty-box">No hay períodos guardados todavía.</div>';
         return;
       }
       let cumulativeSavings = 0;
       rows.forEach(row => {
+        const transfers = activity.find(item => item.period === row.period)?.transfers || 0;
         cumulativeSavings += row.totals.savings;
         const tr = document.createElement('tr');
         tr.innerHTML = `
-          <td>${formatPeriod(row.period)}</td>
+          <td>${formatPeriod(row.period)}${workScheduleNote(row.period) ? `<small class="period-context">${escapeHtml(workScheduleNote(row.period))}</small>` : ''}</td>
           <td>${formatCurrency(row.totals.totalIncome)}</td>
           <td>${formatCurrency(row.totals.commonExpenses)}</td>
           <td>${formatCurrency(row.totals.personalExpenses)}</td>
           <td>${formatCurrency(row.totals.dependentExpenses)}</td>
           <td>${formatCurrency(row.totals.investments)}</td>
+          <td>${formatCurrency(transfers)}</td>
           <td>${formatCurrency(row.totals.totalExpenses)}</td>
           <td>${formatCurrency(row.totals.savings)}</td>
           <td>${formatCurrency(cumulativeSavings)}</td>
@@ -1707,11 +1775,13 @@
               <h3>${formatPeriod(row.period)}</h3>
               <span class="badge ${row.totals.totalSavings >= 0 ? 'good' : 'warn'}">${formatPercent(row.totals.totalSavingsRate)}</span>
             </div>
+            ${workScheduleNote(row.period) ? `<p class="context-note">${escapeHtml(workScheduleNote(row.period))}</p>` : ''}
             <div class="history-month-grid">
               <div class="history-month-stat"><span>Ingresos</span><strong>${formatCurrency(row.totals.totalIncome)}</strong></div>
               <div class="history-month-stat"><span>Gastos de vida</span><strong>${formatCurrency(row.totals.livingExpenses)}</strong></div>
               <div class="history-month-stat"><span>Disponible</span><strong>${formatCurrency(row.totals.savings)}</strong></div>
-              <div class="history-month-stat"><span>Largo plazo</span><strong>${formatCurrency(row.totals.investments)}</strong></div>
+              <div class="history-month-stat"><span>Inversión desde ingresos</span><strong>${formatCurrency(row.totals.investments)}</strong></div>
+              <div class="history-month-stat"><span>Traspasos desde renta fija</span><strong>${formatCurrency(transfers)}</strong></div>
               <div class="history-month-stat"><span>Ahorro total</span><strong>${formatCurrency(row.totals.totalSavings)}</strong></div>
             </div>
             <button type="button" class="btn btn-soft" data-open-period="${row.period}">Abrir y editar este mes</button>
@@ -1734,19 +1804,69 @@
 
     function renderHistoryInvestments(rows) {
       const body = document.getElementById('history-investments-body');
-      body.innerHTML = '';
-      if (!rows.length) {
-        body.innerHTML = '<tr><td colspan="2" class="muted">Sin datos.</td></tr>';
-      } else {
-        rows.forEach(row => {
-          const detail = (row.data.expenses?.monthlyInvestments || [])
-            .map(item => `${escapeHtml(item.type || 'Inversión')} · ${escapeHtml(item.owner || 'Hogar')} · ${escapeHtml(item.name || '')} (${formatCurrency(item.amount)})`)
-            .join('<br>') || '<span class="muted">Sin inversión ese mes</span>';
-          const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${formatPeriod(row.period)}</td><td>${detail}</td>`;
-          body.appendChild(tr);
-        });
-      }
+      const activity = HomeFlowCore.buildInvestmentActivity(Object.fromEntries(rows.map(row => [row.period, row.data])), currentInvestmentTransfers());
+      const sourceLabels = { income: 'Desde ingresos', transfer: 'Desde renta fija', adjustment: 'Ajuste de saldo' };
+      body.innerHTML = activity.map(row => `<tr><td>${row.period === 'Sin fecha' ? row.period : formatPeriod(row.period)}</td><td>${row.items.map(item => `${escapeHtml(item.owner || 'Hogar')} · ${escapeHtml(item.name || '')} · ${sourceLabels[item.source]}: <strong>${formatCurrency(item.amount)}</strong>${item.inferredPeriod ? ' <small>(mes de registro, por confirmar)</small>' : ''}`).join('<br>') || '<span class="muted">Sin movimientos registrados</span>'}</td></tr>`).join('') || '<tr><td colspan="2">Sin movimientos.</td></tr>';
+      buildChart('history-investment-activity-chart', {
+        type: 'bar',
+        data: {
+          labels: activity.map(row => row.period === 'Sin fecha' ? row.period : formatPeriodShort(row.period)),
+          datasets: [
+            { label: 'Desde ingresos', data: activity.map(row => row.newContributions), backgroundColor: '#8b5cf6' },
+            { label: 'Desde renta fija', data: activity.map(row => row.transfers), backgroundColor: '#14b8a6' }
+          ]
+        },
+        options: chartOptions('y', true)
+      });
+      const reconciliation = document.getElementById('investment-reconciliation');
+      reconciliation.innerHTML = activity.map(row => {
+        const owners = [...new Set(row.items.map(item => item.owner || 'Hogar'))];
+        return `<details class="reconciliation-month"><summary><strong>${row.period === 'Sin fecha' ? row.period : formatPeriod(row.period)}</strong><span>${formatCurrency(row.totalDirected)}</span></summary><div class="reconciliation-owners">${owners.map(owner => {
+          const items = row.items.filter(item => (item.owner || 'Hogar') === owner);
+          const income = sumList(items.filter(item => item.source === 'income'));
+          const transfers = sumList(items.filter(item => item.source === 'transfer'));
+          const adjustments = sumList(items.filter(item => item.source === 'adjustment'));
+          return `<div><strong>${escapeHtml(owner)}</strong><span>Ingresos: ${formatCurrency(income)}</span><span>Traspasos: ${formatCurrency(transfers)}</span><span>Total destinado: <strong>${formatCurrency(income + transfers)}</strong></span>${adjustments ? `<small>Ajustes aparte: ${formatCurrency(adjustments)}</small>` : ''}</div>`;
+        }).join('') || '<p class="muted">No hay movimientos registrados para este mes.</p>'}</div></details>`;
+      }).join('');
+      renderTransferReconciliation();
+    }
+
+    function renderTransferReconciliation() {
+      const container = document.getElementById('transfer-reconciliation-list');
+      if (!container) return;
+      const items = currentInvestmentTransfers().filter(item => item.kind === 'toFunds');
+      const unconfirmed = items.filter(item => !item.period).length;
+      document.getElementById('investment-reconciliation-note').textContent = unconfirmed
+        ? `${unconfirmed} traspasos antiguos aún no tienen un mes confirmado. Los gráficos usan provisionalmente el mes de registro; revisa su mes real más abajo.`
+        : 'Todos los traspasos tienen un mes asignado. Las aportaciones desde ingresos y los traspasos se muestran por separado.';
+      container.innerHTML = items.map(item => {
+        const id = escapeHtml(item.id);
+        const duplicates = items.filter(other => other.id !== item.id && other.owner === item.owner && other.createdAt === item.createdAt && num(other.amount) === num(item.amount));
+        const adjustment = item.purpose === 'adjustment' || (!item.purpose && /^ajustes?$/i.test(item.note || ''));
+        return `<article class="category-card transfer-review-row"><div><strong>${escapeHtml(item.owner)} · ${formatCurrency(item.amount)}</strong><p class="muted">${escapeHtml(item.note || 'Renta fija → variable')} · registrado ${escapeHtml((item.createdAt || '').slice(0, 10))}</p>${!item.period ? '<p class="context-note">Mes pendiente de confirmar: se está usando la fecha de registro.</p>' : ''}${duplicates.length ? '<p class="context-note">Coincide en titular, importe y hora con otro movimiento. Comprueba a qué mes corresponde cada uno.</p>' : ''}</div><div class="field-row"><div><label for="transfer-period-${id}">Mes efectivo</label><input id="transfer-period-${id}" type="month" value="${HomeFlowCore.getTransferPeriod(item)}" /></div><div><label for="transfer-purpose-${id}">Motivo</label><select id="transfer-purpose-${id}"><option value="investment" ${adjustment ? '' : 'selected'}>Inversión a largo plazo</option><option value="adjustment" ${adjustment ? 'selected' : ''}>Ajuste de saldo</option></select></div><button class="btn btn-soft" data-reconcile-transfer="${id}">Guardar mes y motivo</button></div></article>`;
+      }).join('') || '<p class="muted">No hay traspasos antiguos que revisar.</p>';
+      container.querySelectorAll('[data-reconcile-transfer]').forEach(button => button.addEventListener('click', async () => {
+        const item = currentInvestmentTransfers().find(transfer => transfer.id === button.dataset.reconcileTransfer);
+        if (!item || button.disabled) return;
+        const period = document.getElementById(`transfer-period-${item.id}`).value;
+        if (!period) return;
+        const previous = structuredClone(item);
+        item.period = period;
+        item.purpose = document.getElementById(`transfer-purpose-${item.id}`).value;
+        button.disabled = true;
+        try {
+          await storageAdapter.saveProfile(state.profile);
+          await refreshHistoricalView();
+          document.getElementById('transfer-reconciliation-status').textContent = `Movimiento de ${item.owner} asignado a ${formatPeriod(period)}. Su importe y el patrimonio no cambian.`;
+        } catch (error) {
+          Object.keys(item).forEach(key => delete item[key]);
+          Object.assign(item, previous);
+          document.getElementById('transfer-reconciliation-status').textContent = error.message;
+        } finally {
+          button.disabled = false;
+        }
+      }));
     }
 
 
@@ -1791,9 +1911,9 @@
       return Array.from(payerMap.values());
     }
 
-    function buildIncomeBreakdownHistory(rows, selectedAdultId = 'household') {
+    function buildIncomeBreakdownHistory(rows, selectedAdultId = 'household', showAll = false) {
       const payersByKey = new Map();
-      const periodBreakdowns = rows.map(row => {
+      let periodBreakdowns = rows.map(row => {
         const context = getProfileContextForData(row.data, state.profile);
         const adults = selectedAdultId === 'household'
           ? (context.adults || [])
@@ -1811,7 +1931,12 @@
         return { period: row.period, values };
       });
 
-      const payerKeys = Array.from(payersByKey.keys()).sort((a, b) => payersByKey.get(a).localeCompare(payersByKey.get(b), 'es'));
+      if (!showAll) {
+        periodBreakdowns = HomeFlowCore.groupSmallIncomePayers(periodBreakdowns);
+        payersByKey.set('__other__', 'Otros ingresos (≤ 500 € por pagador/mes)');
+      }
+      const usedKeys = new Set(periodBreakdowns.flatMap(item => Array.from(item.values.keys())));
+      const payerKeys = Array.from(payersByKey.keys()).filter(key => usedKeys.has(key)).sort((a, b) => a === '__other__' ? 1 : b === '__other__' ? -1 : payersByKey.get(a).localeCompare(payersByKey.get(b), 'es'));
       return { payerKeys, payerLabels: payerKeys.map(key => payersByKey.get(key)), periodBreakdowns };
     }
 
@@ -1826,8 +1951,10 @@
       select.innerHTML = '<option value="household">Hogar</option>' + adults.map(adult => `<option value="${escapeHtml(adult.id)}">${escapeHtml(adult.label)}</option>`).join('');
       select.value = adults.some(adult => adult.id === previousValue) ? previousValue : 'household';
       select.onchange = () => renderHistoryIncomeBreakdown(rows);
+      const showAll = document.getElementById('history-income-show-all');
+      showAll.onchange = () => renderHistoryIncomeBreakdown(rows);
 
-      const breakdown = buildIncomeBreakdownHistory(rows, select.value);
+      const breakdown = buildIncomeBreakdownHistory(rows, select.value, showAll.checked);
       const labels = rows.map(row => formatPeriodShort(row.period));
       const palette = ['#2563eb', '#0f766e', '#f59e0b', '#8b5cf6', '#f97316', '#22c55e', '#0ea5e9', '#a855f7', '#14b8a6', '#64748b', '#dc2626', '#84cc16'];
       const datasets = breakdown.payerKeys.map((key, index) => ({
@@ -1879,6 +2006,8 @@
       const personalExpenses = rows.map(r => round2(r.totals.personalExpenses));
       const dependentExpenses = rows.map(r => round2(r.totals.dependentExpenses));
       const investments = rows.map(r => round2(r.totals.investments));
+      const activity = HomeFlowCore.buildInvestmentActivity(Object.fromEntries(rows.map(row => [row.period, row.data])), currentInvestmentTransfers());
+      const transferAmounts = rows.map(row => activity.find(item => item.period === row.period)?.transfers || 0);
       const savings = rows.map(r => round2(r.totals.savings));
       const totalSavings = rows.map(r => round2(r.totals.totalSavings));
       const totalSavingsRates = rows.map(r => round2(r.totals.totalSavingsRate));
@@ -1902,7 +2031,8 @@
             { label: 'Gastos comunes', data: commonExpenses, backgroundColor: '#f59e0b', stack: 'gastos' },
             { label: 'Gastos personales', data: personalExpenses, backgroundColor: '#60a5fa', stack: 'gastos' },
             { label: 'Gastos hijos', data: dependentExpenses, backgroundColor: '#f97316', stack: 'gastos' },
-            { label: 'Inversión a largo plazo', data: investments, backgroundColor: '#8b5cf6', stack: 'gastos' },
+            { label: 'Inversión desde ingresos', data: investments, backgroundColor: '#8b5cf6', stack: 'gastos' },
+            { label: 'Traspasos desde renta fija (patrimonio previo)', data: transferAmounts, backgroundColor: '#14b8a6', stack: 'traspasos' },
             { label: 'Ahorro disponible', data: savings, type: 'line', borderColor: '#22c55e', backgroundColor: '#22c55e', yAxisID: 'y1', tension: 0.3 }
           ]
         },
@@ -2465,6 +2595,7 @@ async function addHistoricalInvestment() {
       aggregatedRows.forEach(item => {
         const bucket = ensureOwner(item.owner || 'Hogar');
         const category = getInvestmentCategory(item.type);
+        if (HomeFlowCore.isInternalInvestmentTransfer(item)) bucket.fixedBase -= num(item.amount);
         if (category === 'funds') {
           bucket.fundsBase += num(item.amount);
           bucket.fundItems.push(item);
@@ -2527,6 +2658,7 @@ async function addHistoricalInvestment() {
       const ownerSlug = slugify(ownerName || 'hogar');
       const amountInput = document.getElementById(`${kind}-amount-${ownerSlug}`);
       const noteInput = document.getElementById(`${kind}-note-${ownerSlug}`);
+      const periodInput = document.getElementById(`${kind}-period-${ownerSlug}`);
       if (!amountInput) return;
       const amount = num(amountInput.value || 0);
       const note = noteInput ? noteInput.value.trim() : '';
@@ -2551,6 +2683,8 @@ async function addHistoricalInvestment() {
         owner: ownerName || 'Hogar',
         amount,
         note,
+        period: periodInput?.value || state.currentPeriod || getSelectedPeriodId(),
+        purpose: 'investment',
         createdAt: new Date().toISOString()
       };
       currentInvestmentTransfers().push(transfer);
@@ -2590,25 +2724,58 @@ async function addHistoricalInvestment() {
       return getSavedFixedIncomeSales().reduce((acc, item) => acc + num(item.amount), 0);
     }
 
-    async function closeDeposit(depositId, actualNetInterest = null) {
+    async function closeDeposit(depositId, actualNetInterest = null, options = {}) {
       const deposit = currentDeposits().find(item => item.id === depositId);
-      if (!deposit || isDepositClosed(deposit)) return;
-      const previousLifecycle = {
-        status: deposit.status,
-        closedAt: deposit.closedAt,
-        closedInterest: deposit.closedInterest
-      };
+      if (!deposit) throw new Error('No se ha encontrado el depósito.');
+      const previousLifecycle = structuredClone(deposit);
       deposit.status = 'closed';
-      deposit.closedAt = new Date().toISOString();
+      deposit.closedAt = options.date || new Date().toISOString();
       deposit.closedInterest = round2(actualNetInterest ?? deposit.interest ?? 0);
+      deposit.closedInterestBasis = options.basis || 'actual';
       try {
         await storageAdapter.saveProfile(state.profile);
         await renderInvestmentsTab();
       } catch (error) {
-        deposit.status = previousLifecycle.status;
-        deposit.closedAt = previousLifecycle.closedAt;
-        deposit.closedInterest = previousLifecycle.closedInterest;
+        Object.keys(deposit).forEach(key => delete deposit[key]);
+        Object.assign(deposit, previousLifecycle);
         setDepositStatus(error?.message || 'No se pudo cerrar el depósito.', true);
+        throw error;
+      }
+    }
+
+    function openDepositSettlement(depositId) {
+      const deposit = currentDeposits().find(item => item.id === depositId);
+      if (!deposit) return;
+      const estimate = calculateDepositEstimate(deposit.amount, deposit.rate, deposit.start, deposit.durationMonths || deposit.months || 1, new Date(), deposit.withholdingRate ?? 19);
+      document.getElementById('deposit-settlement-id').value = deposit.id;
+      document.getElementById('deposit-settlement-title').textContent = `${isDepositClosed(deposit) ? 'Revisar cobro' : 'Registrar cobro'} · ${deposit.name}`;
+      document.getElementById('deposit-settlement-note').textContent = `Capital ${formatCurrency(deposit.amount)} · Vencimiento previsto ${estimate.end}. Si cobras antes, comprueba el interés liquidado por el banco.`;
+      document.getElementById('deposit-settlement-date').value = deposit.closedAt?.slice(0, 10) || formatDateInput(new Date());
+      document.getElementById('deposit-settlement-interest').value = deposit.closedInterest ?? estimate.interest;
+      document.getElementById('deposit-settlement-basis').value = deposit.closedInterestBasis || (isDepositClosed(deposit) ? 'actual' : 'estimate');
+      document.getElementById('deposit-settlement-status').textContent = '';
+      document.getElementById('deposit-settlement-dialog').showModal();
+    }
+
+    async function saveDepositSettlement(event) {
+      event.preventDefault();
+      const button = document.getElementById('save-deposit-settlement');
+      if (button.disabled) return;
+      const amount = Number(document.getElementById('deposit-settlement-interest').value);
+      const date = document.getElementById('deposit-settlement-date').value;
+      const basis = document.getElementById('deposit-settlement-basis').value;
+      if (!date || date > formatDateInput(new Date()) || !Number.isFinite(amount) || amount < 0) {
+        document.getElementById('deposit-settlement-status').textContent = 'Introduce un importe válido y una fecha de cobro no futura.';
+        return;
+      }
+      button.disabled = true;
+      try {
+        await closeDeposit(document.getElementById('deposit-settlement-id').value, amount, { date, basis });
+        document.getElementById('deposit-settlement-dialog').close();
+      } catch (error) {
+        document.getElementById('deposit-settlement-status').textContent = error.message;
+      } finally {
+        button.disabled = false;
       }
     }
 
@@ -2637,14 +2804,16 @@ async function addHistoricalInvestment() {
                 <div class="compact-row-main">
                   <div class="compact-row-title">${escapeHtml(event.sourceName)}</div>
                   <div class="compact-row-subtitle">${event.sourceType === 'deposit' ? 'Depósito cobrado' : 'Interés de cuenta'} · ${event.date ? new Date(event.date.length === 10 ? `${event.date}T12:00:00` : event.date).toLocaleDateString('es-ES') : 'sin fecha'} · ${escapeHtml(event.owner)}</div>
+                  ${event.estimated ? '<small class="context-note">Interés estimado; pendiente de cotejar con el banco.</small>' : ''}
                 </div>
-                <div class="compact-row-amount">${formatCurrency(event.amount)}</div>
+                <div class="compact-row-actions"><strong>${formatCurrency(event.amount)}</strong>${event.sourceType === 'deposit' ? `<button class="btn btn-soft btn-inline" data-review-settlement="${escapeHtml(event.id)}">Revisar cobro</button>` : ''}</div>
               </div>
             `).join('')}
           </div>
         </details>
       `).join('');
       restoreOpenAccordionKeys(container, openAccordionKeys);
+      container.querySelectorAll('[data-review-settlement]').forEach(button => button.addEventListener('click', () => openDepositSettlement(button.dataset.reviewSettlement)));
     }
 
     function getSavedFixedIncomeTransfersToFunds() {
@@ -2688,7 +2857,10 @@ async function addHistoricalInvestment() {
     function renderActiveDepositList(deposits, todayDevice) {
       const list = document.getElementById('deposit-list');
       if (!list) return;
-      const activeDeposits = deposits.filter(isDepositActive);
+      const activeDeposits = deposits.filter(isDepositActive).map(deposit => ({
+        ...deposit,
+        ...calculateDepositEstimate(deposit.amount, deposit.rate, deposit.start, deposit.durationMonths || deposit.months || 1, todayDevice, deposit.withholdingRate ?? 19)
+      }));
       const portfolio = HomeFlowCore.calculateDepositPortfolio(activeDeposits);
       setText('deposit-active-count', String(portfolio.count));
       setText('deposit-active-capital', formatCurrency(portfolio.capital));
@@ -2706,19 +2878,7 @@ async function addHistoricalInvestment() {
         if (deposit.dueToday || deposit.endingSoon) return 1;
         return 2;
       };
-      const orderedDeposits = activeDeposits
-        .map((deposit) => ({
-          ...deposit,
-          ...calculateDepositEstimate(
-            deposit.amount,
-            deposit.rate,
-            deposit.start,
-            deposit.durationMonths || deposit.months || 1,
-            todayDevice,
-            deposit.withholdingRate ?? 19
-          )
-        }))
-        .sort((a, b) => {
+      const orderedDeposits = activeDeposits.sort((a, b) => {
           const priorityDiff = getDepositPriority(a) - getDepositPriority(b);
           if (priorityDiff !== 0) return priorityDiff;
           if (a.matured && b.matured) return String(b.end || '').localeCompare(String(a.end || ''));
@@ -2730,7 +2890,6 @@ async function addHistoricalInvestment() {
       visibleDeposits.items.forEach((deposit) => {
         const depositIndex = deposits.findIndex(item => item.id === deposit.id);
         if (depositIndex < 0) return;
-        Object.assign(deposits[depositIndex], deposit);
         const row = document.createElement('div');
         const depositStateClass = deposit.matured
           ? 'deposit-matured'
@@ -2742,7 +2901,7 @@ async function addHistoricalInvestment() {
           <div class="compact-row-main">
             ${statusRibbon}
             <div class="compact-row-title">${escapeHtml(deposit.name)}</div>
-            <div class="compact-row-subtitle">${escapeHtml(deposit.bank)} · ${deposit.start} → ${deposit.end}</div>
+            <div class="compact-row-subtitle">${escapeHtml(deposit.bank)} · ${escapeHtml(deposit.owner || 'Hogar')} · ${deposit.start} → ${deposit.end}</div>
             <div class="deposit-metrics">
               <span>Capital <strong>${formatCurrency(deposit.amount)}</strong></span>
               <span>Interés bruto <strong>${formatCurrency(deposit.grossInterest || 0)}</strong></span>
@@ -2752,7 +2911,7 @@ async function addHistoricalInvestment() {
           </div>
           <div class="compact-row-actions">
             <span class="badge ${deposit.matured ? 'good' : ((deposit.endingSoon || deposit.dueToday) ? 'warn' : 'info')}">${badgeText}</span>
-            ${deposit.matured ? '<button class="btn btn-soft btn-inline" data-close-deposit>Marcar como cobrado</button>' : ''}
+            <button class="btn btn-soft btn-inline" data-close-deposit>Registrar cobro</button>
             <button class="btn btn-danger btn-inline" data-delete-deposit>Eliminar</button>
           </div>
         `;
@@ -2768,19 +2927,7 @@ async function addHistoricalInvestment() {
             setDepositStatus(error?.message || 'No se pudo eliminar el depósito.', true);
           }
         });
-        row.querySelector('[data-close-deposit]')?.addEventListener('click', async () => {
-          const entered = prompt(
-            `Introduce el interés neto real cobrado de "${deposit.name}". Al aceptar, el depósito desaparecerá del patrimonio y el interés quedará en el histórico.`,
-            String(round2(deposit.interest || 0)).replace('.', ',')
-          );
-          if (entered === null) return;
-          const actualNetInterest = HomeFlowCore.parseMoneyInput(entered);
-          if (!Number.isFinite(actualNetInterest) || actualNetInterest < 0) {
-            alert('Introduce un importe válido, igual o mayor que cero.');
-            return;
-          }
-          await closeDeposit(deposit.id, actualNetInterest);
-        });
+        row.querySelector('[data-close-deposit]').addEventListener('click', () => openDepositSettlement(deposit.id));
         list.appendChild(row);
       });
       renderMovementToggle(
@@ -2805,7 +2952,13 @@ async function addHistoricalInvestment() {
       const bar = document.getElementById('housing-progress-bar');
       if (bar) bar.style.width = `${Math.max(0, Math.min(100, housingSummary.percent))}%`;
       const note = document.getElementById('housing-progress-note');
-      if (note) note.textContent = `Entrada: ${formatCurrency(housingSummary.entryPaid)} · Hipoteca acumulada: ${formatCurrency(housingSummary.hipotecaPaid)} · Pagos extraordinarios: ${formatCurrency(housingSummary.extraPaymentsTotal)}`;
+      if (note) note.textContent = `Entrada: ${formatCurrency(housingSummary.entryPaid)} · Cuotas del 5 %: ${formatCurrency(housingSummary.installment5Paid)} · Otros pagos anteriores: ${formatCurrency(housingSummary.extraPaymentsTotal)} · Hipoteca: ${formatCurrency(housingSummary.hipotecaPaid)}`;
+      setText('housing-installment-total', formatCurrency(housingSummary.installment5Paid));
+      document.getElementById('housing-installment-list').innerHTML = housingSummary.installmentRows.map(item => `<div class="compact-row"><strong>${formatPeriod(item.period)}</strong><span class="amount">${formatCurrency(item.amount)}</span></div>`).join('') || '<p class="muted">Todavía no hay cuotas en los meses guardados.</p>';
+      for (const [suffix, value] of Object.entries({ amount: housing.installment5?.amount || '', start: housing.installment5?.startPeriod || '', end: housing.installment5?.endPeriod || '' })) {
+        const input = document.getElementById(`housing-installment-${suffix}`);
+        if (document.activeElement !== input) input.value = value;
+      }
       const targetInput = document.getElementById('housing-target-price');
       const entryInput = document.getElementById('housing-entry-paid');
       if (targetInput && document.activeElement !== targetInput) targetInput.value = housing.targetPrice || 1072000;
@@ -2892,6 +3045,7 @@ async function addHistoricalInvestment() {
                       <label>Nota</label>
                       <input id="toFunds-note-${ownerSlug}" type="text" placeholder="Ej. Paso a indexados" />
                     </div>
+                    <div><label for="toFunds-period-${ownerSlug}">Mes efectivo</label><input id="toFunds-period-${ownerSlug}" type="month" value="${state.currentPeriod || getSelectedPeriodId()}" /></div>
                     <button class="btn btn-soft" data-add-transfer="${escapeHtml(owner.owner)}" data-transfer-kind="toFunds">Pasar a variable</button>
                   </div>
                   <div class="muted">Disponible ahora: ${formatCurrency(owner.fixed)}</div>
@@ -2901,7 +3055,7 @@ async function addHistoricalInvestment() {
                       <div class="compact-row">
                         <div class="compact-row-main">
                           <div class="compact-row-title">${formatCurrency(item.amount)}</div>
-                          <div class="compact-row-subtitle">${escapeHtml(item.note || 'Paso a renta variable')} · ${new Date(item.createdAt || Date.now()).toLocaleDateString('es-ES')}</div>
+                          <div class="compact-row-subtitle">${escapeHtml(item.note || 'Paso a renta variable')} · ${formatPeriod(HomeFlowCore.getTransferPeriod(item))}${item.period ? '' : ' (mes de registro)'}</div>
                         </div>
                         <div class="compact-row-actions">
                           <button class="btn btn-danger btn-inline" data-remove-transfer="${item.id}">Eliminar</button>
@@ -3032,6 +3186,7 @@ async function addHistoricalInvestment() {
     }
 
     function renderProfileConfig() {
+      renderWorkSchedules();
       document.getElementById('cfg-fibra').value = state.profile.fixedExpenseLabels.fibra || 'Fibra óptica';
       document.getElementById('cfg-luz').value = state.profile.fixedExpenseLabels.luz || 'Luz';
       document.getElementById('cfg-gas').value = state.profile.fixedExpenseLabels.gas || 'Gas';
@@ -3208,6 +3363,49 @@ async function addHistoricalInvestment() {
       });
     }
 
+    function renderWorkSchedules() {
+      const select = document.getElementById('work-owner');
+      if (!select) return;
+      const previous = select.value;
+      select.innerHTML = getActiveAdults().map(adult => `<option value="${escapeHtml(adult.name)}">${escapeHtml(adult.name)}</option>`).join('');
+      if (getActiveAdults().some(adult => adult.name === previous)) select.value = previous;
+      document.getElementById('work-start').value ||= state.currentPeriod || getSelectedPeriodId();
+      document.getElementById('work-schedule-list').innerHTML = (state.profile.workSchedules || [])
+        .slice().sort((a, b) => b.startPeriod.localeCompare(a.startPeriod))
+        .map(item => `<div class="compact-row"><span><strong>${escapeHtml(item.owner)}</strong> · desde ${formatPeriod(item.startPeriod)}</span><span class="badge info">Jornada ${num(item.percent)} %</span></div>`).join('');
+    }
+
+    async function saveWorkSchedule() {
+      const owner = document.getElementById('work-owner').value;
+      const startPeriod = document.getElementById('work-start').value;
+      const percent = Number(document.getElementById('work-percent').value);
+      const status = document.getElementById('work-status');
+      if (!owner || !startPeriod || !Number.isFinite(percent) || percent < 1 || percent > 100) {
+        status.textContent = 'Selecciona persona, mes de inicio y porcentaje entre 1 y 100.';
+        return;
+      }
+      const previous = structuredClone(state.profile.workSchedules || []);
+      state.profile.workSchedules = previous.filter(item => item.owner !== owner || item.startPeriod !== startPeriod);
+      state.profile.workSchedules.push({ owner, startPeriod, percent });
+      try {
+        await storageAdapter.saveProfile(state.profile);
+        renderWorkSchedules();
+        renderPersonCards();
+        await refreshHistoricalView();
+        status.textContent = `Jornada de ${owner} guardada: ${percent} % desde ${formatPeriod(startPeriod)}.`;
+      } catch (error) {
+        state.profile.workSchedules = previous;
+        status.textContent = error.message;
+      }
+    }
+
+    function workScheduleNote(period) {
+      return getAllAdults().map(adult => {
+        const schedule = HomeFlowCore.getWorkSchedule(state.profile, adult.name, period);
+        return schedule ? `${adult.name}: jornada ${num(schedule.percent)} %` : '';
+      }).filter(Boolean).join(' · ');
+    }
+
     function buildProfilePayloadFromConfiguration() {
       if (document.getElementById('adult-name').value.trim()) addAdultFromConfig();
       if (document.getElementById('child-name').value.trim()) addChildFromConfig();
@@ -3261,10 +3459,10 @@ async function addHistoricalInvestment() {
       } else {
         state.currentPeriod = getSelectedPeriodId();
         const savedPeriod = await storageAdapter.getPeriod(state.currentPeriod);
-        state.form = ensurePeriodStructure(savedPeriod || createEmptyPeriodData(), state.profile);
+        state.form = ensurePeriodStructure(HomeFlowCore.applyHousingInstallmentDefault(savedPeriod || createEmptyPeriodData(), state.profile.housing, state.currentPeriod, { isNew: !savedPeriod }), state.profile);
       }
       state.form.meta ||= {};
-      state.form.meta.profileSnapshot = buildProfileSnapshot(state.profile);
+      state.form.meta.profileSnapshot ||= buildProfileSnapshot(state.profile);
       renderMonthlyArea();
       renderMonthlySummary();
       renderPeriodContextNote();
@@ -3491,6 +3689,22 @@ async function addHistoricalInvestment() {
       const incomeRows = ordered.flatMap(([period, data]) => buildIncomeRowsForPeriod(period, data));
       const expenseRows = ordered.flatMap(([period, data]) => buildExpenseRowsForPeriod(period, data));
       const investmentRows = ordered.flatMap(([period, data]) => buildInvestmentRowsForPeriod(period, data));
+      const activityRows = HomeFlowCore.buildInvestmentActivity(all, currentInvestmentTransfers()).map(row => ({
+        Periodo: row.period,
+        Desde_ingresos: row.newContributions,
+        Desde_renta_fija: row.transfers,
+        Total_destinado: row.totalDirected,
+        Ajustes_de_saldo: row.adjustments
+      }));
+      const transferRows = currentInvestmentTransfers().map(item => ({
+        Mes_efectivo: HomeFlowCore.getTransferPeriod(item),
+        Mes_confirmado: !!item.period,
+        Titular: item.owner,
+        Tipo: item.kind === 'toFunds' ? 'Renta fija → variable' : 'Retirada de renta fija',
+        Concepto: item.note || '',
+        Importe: round2(item.amount),
+        Fecha_registro: item.createdAt || ''
+      }));
       const savingsAccountRows = currentSavingsAccounts().map(account => {
         const projection = HomeFlowCore.calculateSavingsAccountProjection(account.balance, account.annualRate);
         return {
@@ -3511,12 +3725,15 @@ async function addHistoricalInvestment() {
         Origen: event.sourceType === 'deposit' ? 'Depósito' : 'Cuenta remunerada',
         Producto: event.sourceName,
         Titular: event.owner || 'Hogar',
-        Importe_Neto: round2(event.amount)
+        Importe_Neto: round2(event.amount),
+        Estado: event.estimated ? 'Estimado, pendiente de cotejar' : 'Confirmado'
       })));
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), 'Resumen');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(incomeRows), 'Ingresos');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(expenseRows), 'Gastos');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(investmentRows), 'Inversiones');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(activityRows), 'Actividad inversora');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(transferRows), 'Traspasos');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(savingsAccountRows), 'Cuentas remuneradas');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(interestRows), 'Intereses cobrados');
       XLSX.writeFile(wb, 'HomeFlow3_historico.xlsx');
@@ -3616,7 +3833,7 @@ async function addHistoricalInvestment() {
       ).flatMap(group => group.events.map(event => [
         event.date || '',
         event.sourceType === 'deposit' ? 'Depósito' : 'Cuenta remunerada',
-        event.sourceName,
+        event.sourceName + (event.estimated ? ' (interés estimado)' : ''),
         event.owner || 'Hogar',
         formatCurrency(event.amount)
       ]));
@@ -3649,6 +3866,13 @@ async function addHistoricalInvestment() {
         alternateRowStyles: { fillColor: [243, 247, 255] }
       });
 
+      const activity = HomeFlowCore.buildInvestmentActivity(all, currentInvestmentTransfers());
+      doc.autoTable({
+        startY: doc.lastAutoTable.finalY + 20,
+        head: [['Mes', 'Desde ingresos', 'Traspasos renta fija', 'Total destinado', 'Ajustes aparte']],
+        body: activity.map(row => [row.period, formatCurrency(row.newContributions), formatCurrency(row.transfers), formatCurrency(row.totalDirected), formatCurrency(row.adjustments)]),
+        margin: { left: margin, right: margin }, styles: { fontSize: 9, cellPadding: 6 }, headStyles: { fillColor: [15, 118, 110] }
+      });
       doc.save('HomeFlow3_historico.pdf');
     }
 
@@ -3671,7 +3895,8 @@ async function addHistoricalInvestment() {
       const rows = [];
       Object.entries(data.expenses.commonFixed || {}).forEach(([key, amount]) => {
         if (!num(amount)) return;
-        rows.push({ Periodo: formatPeriod(period), Bloque: 'Común', Subcategoria: context.fixedExpenseLabels[key] || key, Concepto: context.fixedExpenseLabels[key] || key, Importe: round2(amount) });
+        const label = key === 'viviendaCuota5' ? 'Cuota 5% RetiroAura' : context.fixedExpenseLabels[key] || key;
+        rows.push({ Periodo: formatPeriod(period), Bloque: 'Común', Subcategoria: label, Concepto: label, Importe: round2(amount) });
       });
       Object.entries(data.expenses.commonFixedExtra || {}).forEach(([key, amount]) => {
         if (!num(amount)) return;
@@ -3690,7 +3915,7 @@ async function addHistoricalInvestment() {
     }
 
     function buildInvestmentRowsForPeriod(period, data) {
-      return (data.expenses.monthlyInvestments || []).map(item => ({ Periodo: formatPeriod(period), Tipo: item.type, Titular: item.owner, Concepto: item.name, Importe: round2(item.amount) }));
+      return (data.expenses.monthlyInvestments || []).map(item => ({ Periodo: formatPeriod(period), Tipo: item.type, Titular: item.owner, Concepto: item.name, Origen: HomeFlowCore.isInternalInvestmentTransfer(item) ? 'Traspaso desde renta fija' : 'Ingresos del mes', Importe: round2(item.amount) }));
     }
 
     function setText(id, text) {
@@ -3727,6 +3952,7 @@ async function addHistoricalInvestment() {
     }
 
     function formatPeriod(periodId) {
+      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(periodId || ''))) return 'Sin fecha';
       const [year, month] = periodId.split('-');
       return `${monthNames[Number(month) - 1]} ${year}`;
     }

@@ -16,8 +16,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="homeflow-core.js?v=20261012-1"></script>
-  <link rel="stylesheet" href="styles.css?v=20261012-1" />
+  <script src="homeflow-core.js?v=20261012-2"></script>
+  <link rel="stylesheet" href="styles.css?v=20261012-2" />
 </head>
 <body>
   <div class="app-shell">
@@ -164,13 +164,13 @@
               <div class="kpi info"><div class="kpi-label">Ingresos hogar</div><div class="kpi-value" id="kpi-income">0 €</div></div>
               <div class="kpi"><div class="kpi-label">Gastos de vida</div><div class="kpi-value" id="kpi-expenses">0 €</div></div>
               <div class="kpi positive"><div class="kpi-label">Ahorro disponible</div><div class="kpi-value" id="kpi-savings">0 €</div></div>
-              <div class="kpi"><div class="kpi-label">Invertido a largo plazo</div><div class="kpi-value" id="kpi-investments">0 €</div></div>
+              <div class="kpi"><div class="kpi-label">Invertido desde ingresos</div><div class="kpi-value" id="kpi-investments">0 €</div><small id="kpi-investment-context"></small></div>
               <div class="kpi positive"><div class="kpi-label">Ahorro total</div><div class="kpi-value" id="kpi-total-savings">0 €</div></div>
               <div class="kpi info"><div class="kpi-label">Tasa de ahorro total</div><div class="kpi-value" id="kpi-rate">0 %</div></div>
             </div>
             <div class="savings-explainer">
               <strong>Disponible</strong>: lo que queda después de gastos e inversión.
-              <strong>Total</strong>: disponible + todas las aportaciones a renta variable y renta fija del mes.
+              <strong>Total</strong>: disponible + aportaciones nuevas del mes. Los traspasos de patrimonio previo se muestran aparte.
             </div>
           </div>
         </details>
@@ -242,11 +242,12 @@
           </summary>
           <div class="accordion-body">
             <div class="section-title">
-              <p class="subtle">Compara de dónde procede lo que cobra cada adulto.</p>
+              <p class="subtle">Cada mes, los pagadores con más de 500 € aparecen por separado. El resto se suma en «Otros ingresos». Puedes ver el detalle completo.</p>
               <div style="min-width:240px;">
                 <label for="history-income-owner-select">Persona</label>
                 <select id="history-income-owner-select"><option value="household">Hogar</option></select>
               </div>
+              <label class="inline-check"><input id="history-income-show-all" type="checkbox" /> Mostrar todos los pagadores</label>
             </div>
             <div class="chart-card"><canvas id="history-income-breakdown-chart"></canvas></div>
             <div class="table-wrap" style="margin-top:18px;">
@@ -290,7 +291,8 @@
                     <th>Gastos comunes</th>
                     <th>Gastos personales</th>
                     <th>Gastos hijos</th>
-                    <th>Inversión del mes</th>
+                    <th>Inversión desde ingresos</th>
+                    <th>Traspasos desde renta fija</th>
                     <th>Salidas totales</th>
                     <th>Ahorro disponible</th>
                     <th>Disponible acumulado</th>
@@ -307,15 +309,25 @@
 
         <details class="workspace-accordion" data-mobile-collapsed>
           <summary>
-            <span><strong>Inversiones por mes</strong><small>Detalle histórico de aportaciones</small></span>
+            <span><strong>Inversiones por mes</strong><small>Aportaciones, traspasos y conciliación por titular</small></span>
           </summary>
           <div class="accordion-body">
-            <div class="table-wrap">
+            <p class="subtle">Lo destinado a inversión incluye aportaciones desde ingresos y traspasos desde renta fija. Los ajustes de saldo se muestran aparte. Los traspasos no son gastos ni ahorro nuevo.</p>
+            <p id="investment-reconciliation-note" class="context-note"></p>
+            <div class="chart-card"><canvas id="history-investment-activity-chart"></canvas></div>
+            <div id="investment-reconciliation" class="reconciliation-list"></div>
+            <details class="category-card">
+              <summary>Revisar el mes de los traspasos antiguos</summary>
+              <p class="subtle">La fecha en que se introdujo un traspaso puede no ser el mes real de la inversión. Asigna su mes sin añadir otro movimiento ni cambiar el patrimonio.</p>
+              <div id="transfer-reconciliation-status" class="status" role="status"></div>
+              <div id="transfer-reconciliation-list" class="dynamic-list"></div>
+            </details>
+            <details class="category-card"><summary>Detalle de todos los movimientos</summary><div class="table-wrap">
               <table>
                 <thead><tr><th>Período</th><th>Detalle</th></tr></thead>
                 <tbody id="history-investments-body"></tbody>
               </table>
-            </div>
+            </div></details>
           </div>
         </details>
       </section>
@@ -427,13 +439,20 @@
                   <input id="housing-entry-paid" type="number" min="0" step="0.01" placeholder="0" />
                 </div>
               </div>
+              <h3>Cuota 5% RetiroAura</h3>
+              <div class="field-row">
+                <div><label for="housing-installment-amount">Cuota mensual conjunta (€)</label><input id="housing-installment-amount" type="number" min="0" step="0.01" placeholder="0" /></div>
+                <div><label for="housing-installment-start">Desde el mes</label><input id="housing-installment-start" type="month" /></div>
+                <div><label for="housing-installment-end">Hasta el mes (opcional)</label><input id="housing-installment-end" type="month" /></div>
+              </div>
+              <p class="subtle">Se propone al cargar un mes nuevo. Puedes cambiarla o poner cero en ese mes. Guardar de nuevo el mes sustituye su cuota.</p>
               <div class="actions" style="justify-content:flex-start;">
                 <button class="btn btn-primary" id="save-housing-settings">Guardar vivienda</button>
               </div>
               <div class="status" id="housing-status"></div>
             </div>
             <div class="category-card">
-              <div class="section-title"><h3>Pagos extraordinarios</h3><span class="muted">Se suman al progreso</span></div>
+              <div class="section-title"><h3>Pagos anteriores y otros adelantos</h3><span class="muted">Vincula una cuota antigua a su mes para incluirla en los gastos sin duplicarla en vivienda.</span></div>
               <div class="field-row-3">
                 <div>
                   <label for="housing-extra-name">Concepto</label>
@@ -447,6 +466,10 @@
               </div>
               <div id="housing-extra-list" class="dynamic-list"></div>
             </div>
+          </div>
+          <div class="category-card" style="margin-top:16px;">
+            <div class="section-title"><h3>Cuotas del 5% registradas</h3><strong id="housing-installment-total">0 €</strong></div>
+            <div id="housing-installment-list" class="compact-list"></div>
           </div>
           <div class="kpi-grid" style="margin-top:18px; grid-template-columns: repeat(4, minmax(0,1fr));">
             <div class="kpi info"><div class="kpi-label">Precio total</div><div class="kpi-value" id="housing-total-price">0 €</div></div>
@@ -785,6 +808,21 @@
           </div>
         </details>
 
+        <details class="workspace-accordion" data-mobile-collapsed>
+          <summary><span><strong>Cambios de jornada</strong><small>Contexto para comparar ingresos entre meses</small></span></summary>
+          <div class="accordion-body">
+            <p class="subtle">Anota el porcentaje trabajado desde un mes. La nómina se introduce por su importe real; la jornada no aplica una reducción automática al sueldo neto.</p>
+            <div class="field-row">
+              <div><label for="work-owner">Persona</label><select id="work-owner"></select></div>
+              <div><label for="work-start">Desde</label><input id="work-start" type="month" /></div>
+              <div><label for="work-percent">Jornada trabajada (%)</label><input id="work-percent" type="number" min="1" max="100" step="1" value="100" /></div>
+              <button id="save-work-schedule" class="btn btn-primary">Guardar jornada</button>
+            </div>
+            <div id="work-status" class="status" role="status"></div>
+            <div id="work-schedule-list" class="compact-list"></div>
+          </div>
+        </details>
+
         <details class="workspace-accordion danger-accordion" data-mobile-collapsed data-scroll-on-open>
           <summary>
             <span><strong>Herramientas y seguridad</strong><small>Copia completa y configuración familiar</small></span>
@@ -819,6 +857,22 @@
       </section>
     </div>
   </div>
+
+  <dialog id="deposit-settlement-dialog" class="settlement-dialog">
+    <form id="deposit-settlement-form">
+      <h2 id="deposit-settlement-title">Registrar cobro</h2>
+      <p id="deposit-settlement-note" class="subtle"></p>
+      <input id="deposit-settlement-id" type="hidden" />
+      <div class="field-row">
+        <div><label for="deposit-settlement-date">Fecha de cobro</label><input id="deposit-settlement-date" type="date" required /></div>
+        <div><label for="deposit-settlement-interest">Interés neto (€)</label><input id="deposit-settlement-interest" type="number" min="0" step="0.01" required /></div>
+        <div><label for="deposit-settlement-basis">Importe del interés</label><select id="deposit-settlement-basis"><option value="actual">Confirmado por el banco</option><option value="estimate">Estimado, pendiente de cotejar</option></select></div>
+      </div>
+      <p class="subtle">El capital sale del listado activo y el interés queda en el histórico. Puedes revisar después el interés y la fecha. No se añade efectivo.</p>
+      <div id="deposit-settlement-status" class="status" role="status"></div>
+      <div class="actions"><button type="button" class="btn btn-secondary" id="cancel-deposit-settlement">Cancelar</button><button type="submit" class="btn btn-primary" id="save-deposit-settlement">Guardar cobro</button></div>
+    </form>
+  </dialog>
 
   <div class="modal-backdrop" id="setup-modal-backdrop">
     <div class="modal">
@@ -883,6 +937,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=20261012-1"></script>
+  <script src="app.js?v=20261012-2"></script>
 </body>
 </html>

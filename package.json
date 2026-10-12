@@ -2,6 +2,6 @@
   "name": "homeflow-app",
   "private": true,
   "scripts": {
-    "test": "node --check app.js && node --check homeflow-core.js && node tests/homeflow-core.test.mjs && node tests/index-contract.test.mjs"
+    "test": "node --check app.js && node --check homeflow-core.js && node tests/homeflow-core.test.mjs && node tests/financial-flows.test.mjs && node tests/index-contract.test.mjs"
   }
 }

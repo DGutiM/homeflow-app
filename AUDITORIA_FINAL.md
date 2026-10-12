@@ -1,4 +1,39 @@
-# Auditoría integral · 26 de septiembre de 2026
+# Auditoría y conciliación · 12 de octubre de 2026
+
+## Hallazgos y correcciones
+
+- El histórico solo mostraba aportaciones registradas en los meses, omitiendo los traspasos del perfil. Ahora muestra ambas fuentes sin convertir patrimonio previo en ahorro nuevo.
+- Los traspasos heredados no tienen necesariamente fecha económica: `createdAt` puede ser el día de una regularización. Se marca el mes provisional, se permite confirmarlo y se avisa de coincidencias en titular, importe y hora. No se borran supuestos duplicados automáticamente.
+- La cuota del 5 % de vivienda tiene una fuente canónica en cada mes. Vincular un pago anterior modifica mes y vivienda en una transacción, conservando el registro heredado sin doble suma.
+- El guardado de perfil ya no reescribe períodos leídos anteriormente; cada mes se reemplaza completo y de forma independiente. Esto evita recuperar campos eliminados por mezclas recursivas.
+- Al terminar un guardado se comprueba si hubo nuevas ediciones mientras se esperaba; en ese caso el formulario sigue indicando cambios pendientes.
+- Los totales de depósitos recalculan todas las posiciones activas, no solo las filas visibles. Renderizar ya no modifica los depósitos originales.
+- El formulario de cobro permite revisar fecha e importe y marcar estimaciones. No ejecuta operaciones bancarias ni crea efectivo.
+- Campos a cero vacíos, jornada contextual desde un mes, pagadores pequeños agrupados y conciliación mensual desplegable.
+- Se conserva la instantánea familiar de cada mes antiguo al guardarlo.
+- Se elimina el guardado completo obsoleto y el cálculo duplicado de depósitos, sin retirar compatibilidad de datos heredados.
+
+## Protección y pruebas
+
+- Código inicial: `252b88aa00b92a2658b52000c76ab66d207dbcdc`; copia remota `backup/pre-conciliacion-2026-10-12`.
+- Copias completas JSON y Excel privadas, fuera del repositorio. Ningún extracto o dato financiero del usuario forma parte de los tests.
+- `npm test`: sintaxis, núcleo financiero, flujos de aportaciones/traspasos, vivienda, agrupación, jornada y contrato HTML.
+- Pruebas de cuota antigua vinculada, cuota nueva, modificación y guardado repetido: cada importe se cuenta una sola vez.
+- Pruebas con copia aislada de los datos, sin conexión de escritura a Firebase, en 390 × 844 y 1440 × 900.
+- Entrada secuencial sin cero inicial, desplegable conservado, navegación inferior fija y ausencia de desbordamiento horizontal.
+- Asignar otro mes a un traspaso modifica el histórico sin variar la cartera. Consola sin errores durante las pruebas visuales.
+
+## Límites y siguientes mejoras
+
+- Las fechas y aportaciones históricas ambiguas necesitan confirmación del usuario; no se completan meses por un patrón supuesto.
+- Una liquidación estimada no acredita el importe real pagado por el banco.
+- Los fondos reflejan capital registrado, no cotización actual. Vivienda refleja desembolsos, no patrimonio neto ni capital hipotecario amortizado.
+- Las reglas del servidor Firebase no están en el repositorio y no se han auditado. La cola protege una sesión; no resuelve ediciones simultáneas del mismo perfil desde varios dispositivos.
+- La copia JSON es de descarga; restaurarla no tiene aún un flujo de importación validado para el usuario.
+
+---
+
+# Auditoría anterior · 26 de septiembre de 2026
 
 ## Alcance
 

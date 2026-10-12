@@ -86,6 +86,7 @@
         merged.closedInterest = roundMoney(
           closed.closedInterest ?? closed.interest ?? existing.closedInterest ?? deposit.closedInterest ?? 0
         );
+        if (closed.closedInterestBasis) merged.closedInterestBasis = closed.closedInterestBasis;
       }
       depositsById.set(key, normalizeDepositLifecycle(merged));
     });
@@ -130,7 +131,8 @@
           institution: deposit.bank || '',
           owner: deposit.owner || 'Hogar',
           date: deposit.closedAt || deposit.sentToCashAt || deposit.end || '',
-          amount: roundMoney(deposit.closedInterest ?? deposit.interest ?? 0)
+          amount: roundMoney(deposit.closedInterest ?? deposit.interest ?? 0),
+          estimated: deposit.closedInterestBasis === 'estimate'
         });
       });
 
@@ -258,6 +260,7 @@
 
   function summarizeMonthlyInvestments(items) {
     const summary = (items || []).reduce((totals, item) => {
+      if (isInternalInvestmentTransfer(item)) return totals;
       const amount = numberValue(item?.amount);
       const category = getInvestmentCategory(item?.type);
       if (category === 'variable') totals.variable += amount;
@@ -270,6 +273,104 @@
     return Object.fromEntries(
       Object.entries(summary).map(([key, value]) => [key, roundMoney(value)])
     );
+  }
+
+  function isInternalInvestmentTransfer(item) {
+    return item?.fundingSource === 'fixed';
+  }
+
+  function getTransferPeriod(transfer) {
+    const value = String(transfer?.period || transfer?.date || transfer?.createdAt || '').slice(0, 7);
+    return /^\d{4}-(0[1-9]|1[0-2])$/.test(value) ? value : '';
+  }
+
+  function buildInvestmentActivity(periods, transfers = []) {
+    const byPeriod = new Map();
+    const ensure = period => {
+      if (!byPeriod.has(period)) byPeriod.set(period, { period, newContributions: 0, transfers: 0, adjustments: 0, totalDirected: 0, items: [] });
+      return byPeriod.get(period);
+    };
+    Object.entries(periods || {}).forEach(([period, data]) => {
+      const row = ensure(period);
+      (data?.expenses?.monthlyInvestments || []).forEach(item => {
+        const source = isInternalInvestmentTransfer(item) ? 'transfer' : 'income';
+        row[source === 'transfer' ? 'transfers' : 'newContributions'] += numberValue(item.amount);
+        row.items.push({ ...item, source, period });
+      });
+    });
+    (transfers || []).filter(item => item.kind === 'toFunds').forEach(item => {
+      const period = getTransferPeriod(item);
+      const row = ensure(period || 'Sin fecha');
+      const adjustment = item.purpose === 'adjustment' || (!item.purpose && /^ajustes?$/i.test(String(item.note || '').trim()));
+      row[adjustment ? 'adjustments' : 'transfers'] += numberValue(item.amount);
+      row.items.push({ ...item, name: item.note || 'Renta fija → variable', type: 'Renta variable', source: adjustment ? 'adjustment' : 'transfer', period, inferredPeriod: !item.period });
+    });
+    return Array.from(byPeriod.values()).map(row => ({
+      ...row,
+      newContributions: roundMoney(row.newContributions),
+      transfers: roundMoney(row.transfers),
+      adjustments: roundMoney(row.adjustments),
+      totalDirected: roundMoney(row.newContributions + row.transfers)
+    })).sort((a, b) => a.period.localeCompare(b.period));
+  }
+
+  function groupSmallIncomePayers(periodBreakdowns, threshold = 500) {
+    return periodBreakdowns.map(row => {
+      const values = new Map();
+      let other = 0;
+      for (const [key, value] of row.values) {
+        if (numberValue(value) > threshold) values.set(key, numberValue(value));
+        else other += numberValue(value);
+      }
+      if (other) values.set('__other__', roundMoney(other));
+      return { ...row, values };
+    });
+  }
+
+  function applyHousingInstallmentDefault(data, housing, period, { isNew = false } = {}) {
+    const next = structuredClone(data);
+    const schedule = housing?.installment5;
+    if (!isNew || !schedule?.startPeriod || period < schedule.startPeriod || (schedule.endPeriod && period > schedule.endPeriod)) return next;
+    next.expenses ||= {};
+    next.expenses.commonFixed ||= {};
+    if (next.expenses.commonFixed.viviendaCuota5 == null) next.expenses.commonFixed.viviendaCuota5 = Math.max(0, numberValue(schedule.amount));
+    return next;
+  }
+
+  function calculateHousingSummary(housing, periods = {}) {
+    const source = housing || {};
+    const installmentRows = Object.entries(periods).filter(([, data]) => numberValue(data?.expenses?.commonFixed?.viviendaCuota5) > 0)
+      .map(([period, data]) => ({ period, amount: roundMoney(data.expenses.commonFixed.viviendaCuota5) }))
+      .sort((a, b) => a.period.localeCompare(b.period));
+    const extraPaymentsTotal = (source.extraPayments || []).filter(item => !item.linkedInstallmentPeriod)
+      .reduce((acc, item) => acc + numberValue(item.amount), 0);
+    const installment5Paid = roundMoney(installmentRows.reduce((sum, row) => sum + row.amount, 0));
+    const hipotecaPaid = roundMoney(Object.values(periods).reduce((sum, data) => sum + numberValue(data?.expenses?.commonFixed?.viviendaHipoteca), 0));
+    const totalPrice = numberValue(source.targetPrice);
+    const entryPaid = numberValue(source.entryPaid);
+    const paid = roundMoney(entryPaid + extraPaymentsTotal + installment5Paid + hipotecaPaid);
+    return { totalPrice, entryPaid, extraPaymentsTotal: roundMoney(extraPaymentsTotal), installment5Paid, installmentRows, hipotecaPaid, paid, pending: roundMoney(Math.max(0, totalPrice - paid)), percent: totalPrice > 0 ? Math.min(100, paid / totalPrice * 100) : 0 };
+  }
+
+  function linkHousingPaymentToPeriod(bundle, paymentId, period) {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) throw new Error('Selecciona un mes válido.');
+    const next = structuredClone(bundle);
+    const payment = next.profile?.housing?.extraPayments?.find(item => item.id === paymentId);
+    if (!payment) throw new Error('El pago ya no existe.');
+    if (payment.linkedInstallmentPeriod) throw new Error('Este pago ya está vinculado a un mes.');
+    if (!next.periods?.[period]) throw new Error('Carga y guarda primero ese mes en la calculadora.');
+    const month = next.periods[period];
+    month.expenses ||= {};
+    month.expenses.commonFixed ||= {};
+    if (numberValue(month.expenses.commonFixed.viviendaCuota5) > 0) throw new Error('Ese mes ya tiene una cuota del 5 %. Revisa el mes antes de vincular otro pago.');
+    month.expenses.commonFixed.viviendaCuota5 = roundMoney(payment.amount);
+    payment.linkedInstallmentPeriod = period;
+    return next;
+  }
+
+  function getWorkSchedule(profile, owner, period) {
+    return (profile?.workSchedules || []).filter(item => item.owner === owner && item.startPeriod <= period && (!item.endPeriod || item.endPeriod >= period))
+      .sort((a, b) => b.startPeriod.localeCompare(a.startPeriod))[0] || null;
   }
 
   function calculateSavingsBreakdown(totalIncome, livingExpenses, longTermInvestment) {
@@ -356,6 +457,14 @@
   }
 
   root.HomeFlowCore = Object.freeze({
+    applyHousingInstallmentDefault,
+    buildInvestmentActivity,
+    calculateHousingSummary,
+    getTransferPeriod,
+    getWorkSchedule,
+    groupSmallIncomePayers,
+    isInternalInvestmentTransfer,
+    linkHousingPaymentToPeriod,
     allocateSavingsByAdult,
     calculateDepositEstimate,
     calculateDepositPortfolio,

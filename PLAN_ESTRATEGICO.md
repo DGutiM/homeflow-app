@@ -8,6 +8,17 @@
 - Hacer que guardar un mes sea idempotente: actualizar el mismo período nunca debe duplicarlo.
 - Priorizar una experiencia móvil rápida sin degradar la vista de escritorio.
 
+## Conciliación · octubre de 2026
+
+1. Copia de seguridad del código y descarga privada de los datos antes de editar.
+2. Separar flujos nuevos (desde ingresos), traspasos internos y ajustes de saldo. No reconstruir fechas o importes ambiguos por suposición.
+3. Unificar cuota de vivienda: el mes es la fuente de verdad; vincular pagos heredados evita duplicidades.
+4. Mejorar entrada de importes, contexto de jornada, pagadores agrupados y lectura móvil de la conciliación.
+5. Registrar liquidaciones con fecha y carácter real/estimado; mantener el resto de efectivo fuera del modelo.
+6. Probar cálculos, guardados repetidos y vistas de escritorio/móvil antes de publicar. Comparar la copia privada posterior con la anterior.
+
+Pendiente de una entrega futura: valor de mercado frente a capital aportado, patrimonio neto de vivienda, reglas Firestore versionadas, control de conflictos entre dispositivos y separación progresiva de `app.js` por dominios.
+
 ## Etapa 1 · Corrección financiera
 
 - Renta fija solo suma elementos clasificados como renta fija.
